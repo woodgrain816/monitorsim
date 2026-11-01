@@ -3391,7 +3391,7 @@ if (new URLSearchParams(location.search).has('autostart')) powerOn();
 try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeItem('hm.resume'); powerOn(); } else sessionStorage.removeItem('hm.resume'); } catch (e) {}
 </script>
 <style>#instr{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b5675 #121820}</style><script>canPopOut=function(){ return false }; try{ setInstrMode() }catch(e){}
-checkUpdate=function(){ updState("The website updates itself: reload the page for the newest version (build "+HM_BUILD+").") }; try{ buildInstructor(); setInstrMode() }catch(e){}</script>
+checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from the website: close and reopen it for the newest version (build "+HM_BUILD+").":"The website updates itself: reload the page for the newest version (build "+HM_BUILD+").") }; try{ buildInstructor(); setInstrMode() }catch(e){}</script>
 <script>/* WEBSITE ONLY (added by deploy.js): more deteriorations for the Instructor's list, in the House Monitor's own
    format. Each one runs, alarms and shows on the timeline exactly like the built-in ones. Numbers follow the usual
    textbook course of each emergency (adult). */
