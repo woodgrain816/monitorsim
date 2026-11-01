@@ -3978,11 +3978,14 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
       g.noPulse && !/^(vf|asys|pea)$/.test(g.rhythm) ? 'PEA' : (SH[g.rhythm] || rhName(g.rhythm));
     /* purple during a seizure, blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
     const fill = g => g.cpr ? '#c4572a' : g.seize && !g.noPulse ? '#7a4a9a' : g.apnea ? '#8a7a1c' : g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
-    const two = segs.some(g => X(g.to) - X(g.at) < 52);
-    let s = `<svg viewBox="0 0 ${W} ${two ? 70 : 54}" xmlns="http://www.w3.org/2000/svg">`;
-    segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = here && p.i >= g.i0 && p.i <= g.i1, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
+    /* the names never overlap: each goes on the first row down where it has room (its width estimated from its length) */
+    const rowEnd = [], lab = segs.map(g => { const t = label(g), w = t.length * 5.6 + 6, mid = (X(g.at) + X(g.to)) / 2, x = Math.min(W - w / 2, Math.max(w / 2, mid));
+      let r = 0; while (rowEnd[r] != null && rowEnd[r] > x - w / 2) r++; rowEnd[r] = x + w / 2; return {t, x, mid, r}; });
+    const rows = rowEnd.length, rowY = r => y0 + bh + 13 + r * 13;
+    let s = `<svg viewBox="0 0 ${W} ${rowY(rows - 1) + 6}" xmlns="http://www.w3.org/2000/svg">`;
+    segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = here && p.i >= g.i0 && p.i <= g.i1, b = lab[j];
       s += `<rect x="${x0}" y="${y0}" width="${Math.max(1, x1 - x0)}" height="${bh}" fill="${fill(g)}" opacity="${on ? 1 : 0.75}"/>`;
-      s += `<text x="${(x0 + x1) / 2}" y="${ty}" fill="${on ? '#e6eef8' : '#a9bbcf'}" font-size="10" font-weight="${on ? 700 : 500}" text-anchor="middle">${esc(label(g))}</text>`;
+      s += `<text x="${b.x}" y="${rowY(b.r)}" fill="${on ? '#e6eef8' : '#a9bbcf'}" font-size="10" font-weight="${on ? 700 : 500}" text-anchor="middle">${esc(b.t)}</text>`;
       if (j) s += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + bh}" stroke="#0b1016" stroke-width="2"/>`; });
     s += `<rect x="${L}" y="${y0}" width="${W - L - Rr}" height="${bh}" rx="3" fill="none" stroke="#5b738e" stroke-width="1"/>`;
     if (here) { const x = X(knob); s += `<rect x="${L}" y="${y0 + bh - 3}" width="${Math.max(0, x - L)}" height="3" fill="#00e5ff" opacity=".55"/><circle cx="${x}" cy="${y0 + bh / 2}" r="7.5" fill="#00e5ff" stroke="#0b1016" stroke-width="2"/>`; }
@@ -4004,7 +4007,8 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     if (typeof CRS === 'undefined' || typeof courseSteps !== 'function') return;
     const stEl = $('#crsState'); if (!stEl) return;
     let box = document.getElementById('tlViz');
-    const name = CRS.name || lastName; const steps = name && courseSteps(name);
+    /* only while a scenario is running: picking a patient (or stopping) takes the old scenario's bar away */
+    const name = CRS.name; const steps = name && courseSteps(name);
     if (!steps || !steps.length) { if (box) box.remove(); return; }
     /* right under the button group the scenario was picked from (no scrolling to the bottom of the list); the status line if it is not in the list */
     const btn = [...document.querySelectorAll('#instr [data-course]')].find(x => x.dataset.course === name), anchor = (btn && btn.parentNode) || stEl;
