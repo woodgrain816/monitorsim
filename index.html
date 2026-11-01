@@ -804,8 +804,8 @@ function ecgAt(t, lead) {
   else if (rh === 'vf') {
     // chaotic: a dominant 4-6 Hz (240-370/min) whose rate keeps drifting, size waxing and waning; coarse ~0.5-1.2 mV
     // peak to peak, fine ~0.15-0.3 mV
-    const a = (R.vfCoarse ? 0.55 : 0.16) * (0.68 + 0.2 * Math.sin(2 * Math.PI * 0.21 * t) + 0.12 * Math.sin(2 * Math.PI * 0.53 * t + 2));
-    const ph = 2 * Math.PI * 5.0 * t + 3.2 * Math.sin(2 * Math.PI * 0.17 * t) + 1.6 * Math.sin(2 * Math.PI * 0.43 * t + 1);
+    const a = (R.vfCoarse ? 0.55 : 0.16) * (0.7 + 0.18 * Math.sin(2 * Math.PI * 0.21 * t) + 0.1 * Math.sin(2 * Math.PI * 0.53 * t + 2) + 0.12 * Math.sin(2 * Math.PI * 0.9 * t + 1));
+    const ph = 2 * Math.PI * 5.0 * t + 3.2 * Math.sin(2 * Math.PI * 0.17 * t) + 1.6 * Math.sin(2 * Math.PI * 0.43 * t + 1) + 0.9 * Math.sin(2 * Math.PI * 1.3 * t + 0.5);
     v += a * (0.65 * Math.sin(ph) + 0.25 * Math.sin(2 * Math.PI * 7.1 * t + 2.4 * Math.sin(2 * Math.PI * 0.29 * t)) + 0.15 * Math.sin(2 * Math.PI * 3.1 * t + 1.5 * Math.sin(2 * Math.PI * 0.11 * t))) * Math.sign(L.w || 1);
   }
   // baseline wander: the chest moving with each breath plus a slow drift (electrode/skin), a few hundredths of a mV
@@ -3223,10 +3223,10 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
       {at: 500, say: 'Asystole', rhythm: 'asys'}],
     // high potassium: the heart slows, P waves flatten (junctional), the QRS widens (idioventricular), then VF/asystole
     'High potassium → VF → asystole': [
-      {at: 0, say: 'Kidney failure, K+ rising', ramp: 5, rhythm: 'nsr', ectopy: 'none', v: {hr: 68, spo2: 97, sys: 136, dia: 84, cvp: 8, rr: 18, etco2: 36, temp: 36.8, st: 0}},
-      {at: 60, say: 'Bradycardia (K+ about 7)', rhythm: 'sbrady', v: {hr: 50}},
-      {at: 150, say: 'P waves lost: junctional', rhythm: 'junct', v: {hr: 42, sys: 112, dia: 70}},
-      {at: 240, say: 'Wide QRS: idioventricular', rhythm: 'idio', v: {hr: 34, sys: 88, dia: 54, spo2: 95}},
+      {at: 0, say: 'Kidney failure, K+ rising: peaked T waves', ramp: 5, tx: 1.5, rhythm: 'nsr', ectopy: 'none', v: {hr: 68, spo2: 97, sys: 136, dia: 84, cvp: 8, rr: 18, etco2: 36, temp: 36.8, st: 0}},
+      {at: 60, say: 'Bradycardia (K+ about 7)', rhythm: 'sbrady', tx: 2.1, qrsx: 1.15, v: {hr: 50}},
+      {at: 150, say: 'P waves lost: junctional', rhythm: 'junct', qrsx: 1.5, v: {hr: 42, sys: 112, dia: 70}},
+      {at: 240, say: 'Wide QRS: idioventricular', rhythm: 'idio', tx: 1, qrsx: 1, v: {hr: 34, sys: 88, dia: 54, spo2: 95}},
       {at: 320, say: 'Very wide, pressure failing (sine-wave pattern)', v: {hr: 28, sys: 64, dia: 38}},
       {at: 380, say: 'VF', rhythm: 'vf', coarse: true, v: {rr: 0, etco2: 10}},
       {at: 470, say: 'VF (fine)', coarse: false, v: {etco2: 7}},
@@ -3254,12 +3254,12 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
       {at: 640, say: 'Asystole', rhythm: 'asys'}],
     // long QT from a drug: slow rate, PVCs, R-on-T, a run of polymorphic VT (drawn as pulseless VT), then VF
     'Long QT drug → torsades → VF': [
-      {at: 0, say: 'QT-prolonging drug given', ramp: 5, rhythm: 'sbrady', ectopy: 'none', v: {hr: 54, spo2: 97, sys: 118, dia: 74, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
+      {at: 0, say: 'QT-prolonging drug given: long QT', ramp: 5, qtx: 1.35, rhythm: 'sbrady', ectopy: 'none', v: {hr: 54, spo2: 97, sys: 118, dia: 74, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
       {at: 60, say: 'PVCs on a slow rate', ectopy: 'pvc', v: {hr: 52}},
       {at: 150, say: 'Bigeminy', ectopy: 'bigem'},
       {at: 230, say: 'R on T', ectopy: 'ront', v: {sys: 110, dia: 70}},
       {at: 290, say: 'Runs of polymorphic VT', ectopy: 'nsvt'},
-      {at: 340, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 50, dia: 30}},
+      {at: 340, say: 'Torsades, no pulse', rhythm: 'vt', poly: true, vtPulse: false, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 50, dia: 30}},
       {at: 380, say: 'VF (coarse)', rhythm: 'vf', coarse: true, v: {etco2: 10}},
       {at: 520, say: 'VF (fine)', coarse: false, v: {etco2: 7}}],
     // inferior/anterior MI conduction disease: 1st degree, Wenckebach, Mobitz II, complete block with a slow escape
@@ -3432,9 +3432,9 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
       {at: 450, say: 'VT, pressure falling', v: {sys: 70, dia: 44}}],
     'Asthma attack → exhaustion → arrest': [
       Object.assign(B('stach', {hr: 118, spo2: 93, rr: 30, etco2: 30}), {say: 'Wheezing, can speak in phrases'}),
-      {at: 60, say: 'Severe: words only, low CO2', v: {hr: 132, spo2: 90, rr: 36, etco2: 28}},
+      {at: 60, say: 'Severe: words only, low CO2', paradox: 12, v: {hr: 132, spo2: 90, rr: 36, etco2: 28}},
       {at: 150, say: 'Tiring: CO2 creeping up (bad sign)', v: {hr: 138, spo2: 86, rr: 30, etco2: 40}},
-      {at: 240, say: 'Silent chest, exhausted', v: {hr: 126, spo2: 78, rr: 14, etco2: 58, sys: 104, dia: 66}},
+      {at: 240, say: 'Silent chest, exhausted', paradox: 18, v: {hr: 126, spo2: 78, rr: 14, etco2: 58, sys: 104, dia: 66}},
       {at: 320, say: 'Hypoxic bradycardia', rhythm: 'sbrady', v: {hr: 44, spo2: 64, rr: 6, etco2: 70, sys: 78, dia: 44}},
       {at: 380, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 36, rr: 0, etco2: 12}},
       {at: 470, say: 'Asystole', rhythm: 'asys'}],
@@ -3453,10 +3453,10 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     'Low potassium → PVCs → torsades': [
       Object.assign(B('nsr', {hr: 82}), {say: 'Vomiting and diuretics, K+ low'}),
       {at: 60, say: 'PVCs', ectopy: 'pvc'},
-      {at: 150, say: 'Frequent PVCs, U waves', ectopy: 'freq', v: {hr: 88}},
+      {at: 150, say: 'Frequent PVCs, U waves', ectopy: 'freq', qtx: 1.3, v: {hr: 88}},
       {at: 240, say: 'Bigeminy', ectopy: 'bigem'},
       {at: 320, say: 'R on T', ectopy: 'ront'},
-      {at: 380, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 228}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
+      {at: 380, say: 'Torsades, no pulse', rhythm: 'vt', poly: true, vtPulse: false, ectopy: 'none', now: {hr: 228}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
       {at: 420, say: 'VF', rhythm: 'vf', coarse: true}],
     'Digoxin toxicity': [
       Object.assign(B('afib', {hr: 72, sys: 116, dia: 72}), {say: 'On digoxin, nauseated, yellow vision'}),
@@ -3475,7 +3475,7 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     'Tricyclic overdose → wide-complex tachycardia': [
       Object.assign(B('stach', {hr: 124, sys: 108, dia: 64, temp: 37.6}), {say: 'Antidepressant overdose, dry and flushed'}),
       {at: 60, say: 'Drowsy, tachycardic', v: {hr: 136, sys: 96, dia: 56, rr: 12}},
-      {at: 150, say: 'Wide QRS, hypotensive', v: {hr: 142, sys: 82, dia: 48}},
+      {at: 150, say: 'Wide QRS, hypotensive', qrsx: 1.6, v: {hr: 142, sys: 82, dia: 48}},
       {at: 240, say: 'Wide-complex tachycardia', rhythm: 'vt', vtPulse: true, now: {hr: 156}, v: {sys: 72, dia: 42}},
       {at: 330, say: 'Pulseless', vtPulse: false, v: {rr: 0, etco2: 12}},
       {at: 360, say: 'VF', rhythm: 'vf', coarse: true}],
