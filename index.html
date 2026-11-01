@@ -3093,6 +3093,132 @@ if (new URLSearchParams(location.search).has('autostart')) powerOn();
 try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeItem('hm.resume'); powerOn(); } else sessionStorage.removeItem('hm.resume'); } catch (e) {}
 </script>
 <style>#instr{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b5675 #121820}</style><script>canPopOut=function(){ return false }; try{ setInstrMode() }catch(e){}</script>
+<script>/* WEBSITE ONLY (added by deploy.js): more deteriorations for the Instructor's list, in the House Monitor's own
+   format. Each one runs, alarms and shows on the timeline exactly like the built-in ones. Numbers follow the usual
+   textbook course of each emergency (adult). */
+(function () {
+  if (typeof COURSES === 'undefined') return;
+  const add = {
+    // opioids: the breathing slows first, CO2 climbs while the sats fall, then the hypoxic heart slows and stops
+    'Opioid overdose → respiratory arrest': [
+      {at: 0, say: 'Drowsy after opioids', ramp: 5, rhythm: 'nsr', ectopy: 'none', v: {hr: 72, spo2: 96, sys: 118, dia: 74, cvp: 6, rr: 10, etco2: 44, temp: 36.6, st: 0}},
+      {at: 60, say: 'Breathing slowing, pinpoint pupils', v: {rr: 7, etco2: 52, spo2: 93, hr: 66}},
+      {at: 150, say: 'Hypoventilation, CO2 retention', v: {rr: 5, etco2: 62, spo2: 86, hr: 62, sys: 108, dia: 66}},
+      {at: 240, say: 'Severe hypoxia', v: {rr: 3, etco2: 68, spo2: 74, hr: 56}},
+      {at: 330, say: 'Apnea', v: {rr: 0, spo2: 62, hr: 48, sys: 92, dia: 54}},
+      {at: 400, say: 'Hypoxic bradycardia', rhythm: 'sbrady', v: {hr: 36, spo2: 50, sys: 70, dia: 40}},
+      {at: 470, say: 'Junctional, failing', rhythm: 'junct', v: {hr: 30, sys: 52, dia: 30}},
+      {at: 530, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 28, etco2: 12}},
+      {at: 600, say: 'Asystole', rhythm: 'asys'}],
+    // massive PE: sudden tachycardia and hypoxia that oxygen barely helps, low EtCO2 (dead space), rising CVP as the
+    // right heart fails, then hypotension and PEA
+    'Massive pulmonary embolism → PEA': [
+      {at: 0, say: 'Sudden shortness of breath', ramp: 5, rhythm: 'stach', ectopy: 'none', v: {hr: 112, spo2: 92, sys: 128, dia: 82, cvp: 9, rr: 26, etco2: 30, temp: 37.2, st: 0}},
+      {at: 60, say: 'Hypoxic, low EtCO2 (dead space)', v: {hr: 124, spo2: 88, rr: 30, etco2: 25, cvp: 13}},
+      {at: 150, say: 'Right heart strain, CVP rising', v: {hr: 134, spo2: 85, sys: 104, dia: 70, cvp: 17, etco2: 22}},
+      {at: 240, say: 'Obstructive shock', v: {hr: 142, spo2: 82, sys: 82, dia: 56, cvp: 20, rr: 34, etco2: 18}},
+      {at: 330, say: 'Peri-arrest', v: {hr: 128, sys: 62, dia: 40, spo2: 78, etco2: 14}},
+      {at: 380, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 108, rr: 0, etco2: 9}},
+      {at: 480, say: 'PEA, slowing', v: {hr: 60, etco2: 7}},
+      {at: 560, say: 'Agonal, no pulse', rhythm: 'idio', pulseless: true, v: {hr: 26}},
+      {at: 620, say: 'Asystole', rhythm: 'asys'}],
+    // tension pneumothorax: hypoxia and tachycardia, then the trapped air stops venous return (CVP up, BP down) -> PEA
+    'Tension pneumothorax → PEA': [
+      {at: 0, say: 'Chest injury, short of breath', ramp: 5, rhythm: 'stach', ectopy: 'none', v: {hr: 108, spo2: 93, sys: 126, dia: 80, cvp: 8, rr: 26, etco2: 34, temp: 36.9, st: 0}},
+      {at: 45, say: 'Worsening hypoxia', v: {hr: 122, spo2: 88, rr: 32, cvp: 12}},
+      {at: 110, say: 'Tension: CVP up, pressure falling', v: {hr: 138, spo2: 83, sys: 96, dia: 66, cvp: 18, etco2: 28}},
+      {at: 180, say: 'Obstructive shock', v: {hr: 146, spo2: 78, sys: 72, dia: 50, cvp: 22, etco2: 20}},
+      {at: 250, say: 'Peri-arrest', v: {hr: 132, sys: 54, dia: 34, spo2: 72, rr: 10, etco2: 14}},
+      {at: 300, say: 'PEA arrest (needs decompression)', rhythm: 'pea', v: {hr: 112, rr: 0, etco2: 9}},
+      {at: 420, say: 'PEA, slowing', v: {hr: 56}},
+      {at: 520, say: 'Asystole', rhythm: 'asys'}],
+    // anaphylaxis: tachycardia, wheeze (fast breathing, falling sats), vasodilated shock with a low diastolic -> PEA
+    'Anaphylaxis → shock → PEA': [
+      {at: 0, say: 'Allergic reaction starting', ramp: 5, rhythm: 'stach', ectopy: 'none', v: {hr: 104, spo2: 97, sys: 124, dia: 76, cvp: 6, rr: 22, etco2: 36, temp: 37.0, st: 0}},
+      {at: 40, say: 'Wheeze, throat tightness', v: {hr: 122, spo2: 93, rr: 28, etco2: 40, sys: 108, dia: 60}},
+      {at: 100, say: 'Distributive shock', v: {hr: 138, spo2: 89, sys: 82, dia: 38, cvp: 3, rr: 32}},
+      {at: 170, say: 'Severe bronchospasm and hypotension', v: {hr: 148, spo2: 83, sys: 66, dia: 30, cvp: 2, rr: 34, etco2: 48}},
+      {at: 240, say: 'Peri-arrest', v: {hr: 136, spo2: 76, sys: 52, dia: 24, rr: 12}},
+      {at: 290, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 110, rr: 0, etco2: 10}},
+      {at: 400, say: 'PEA, slowing', v: {hr: 58}},
+      {at: 500, say: 'Asystole', rhythm: 'asys'}],
+    // high potassium: the heart slows, P waves flatten (junctional), the QRS widens (idioventricular), then VF/asystole
+    'High potassium → VF → asystole': [
+      {at: 0, say: 'Kidney failure, K+ rising', ramp: 5, rhythm: 'nsr', ectopy: 'none', v: {hr: 68, spo2: 97, sys: 136, dia: 84, cvp: 8, rr: 18, etco2: 36, temp: 36.8, st: 0}},
+      {at: 60, say: 'Bradycardia (K+ about 7)', rhythm: 'sbrady', v: {hr: 50}},
+      {at: 150, say: 'P waves lost: junctional', rhythm: 'junct', v: {hr: 42, sys: 112, dia: 70}},
+      {at: 240, say: 'Wide QRS: idioventricular', rhythm: 'idio', v: {hr: 34, sys: 88, dia: 54, spo2: 95}},
+      {at: 320, say: 'Very wide, pressure failing (sine-wave pattern)', v: {hr: 28, sys: 64, dia: 38}},
+      {at: 380, say: 'VF', rhythm: 'vf', coarse: true, v: {rr: 0, etco2: 10}},
+      {at: 470, say: 'VF (fine)', coarse: false, v: {etco2: 7}},
+      {at: 560, say: 'Asystole', rhythm: 'asys'}],
+    // raised intracranial pressure: Cushing's triad (rising systolic with a wide pulse pressure, bradycardia, irregular
+    // and slowing breathing), then the brainstem fails
+    'Brain swelling (Cushing’s triad) → arrest': [
+      {at: 0, say: 'Head injury, headache', ramp: 5, rhythm: 'nsr', ectopy: 'none', v: {hr: 82, spo2: 98, sys: 138, dia: 82, cvp: 7, rr: 16, etco2: 36, temp: 37.1, st: 0}},
+      {at: 90, say: 'Pressure in the skull rising', v: {hr: 70, sys: 168, dia: 84, rr: 14}},
+      {at: 180, say: "Cushing's triad: hypertension, bradycardia", rhythm: 'sbrady', v: {hr: 52, sys: 198, dia: 86, rr: 10, etco2: 42}},
+      {at: 270, say: 'Irregular breathing', v: {hr: 44, sys: 214, dia: 88, rr: 6, spo2: 92, etco2: 48}},
+      {at: 360, say: 'Herniation: apnea', v: {hr: 38, rr: 0, spo2: 80, sys: 182, dia: 80}},
+      {at: 430, say: 'Brainstem failure, pressure collapses', rhythm: 'junct', v: {hr: 34, sys: 80, dia: 40, spo2: 62}},
+      {at: 500, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 30, etco2: 10}},
+      {at: 570, say: 'Asystole', rhythm: 'asys'}],
+    // hypothermia: slow sinus, then junctional and AF as the core cools, VF below about 28 °C, then asystole
+    'Hypothermia → VF': [
+      {at: 0, say: 'Found cold, shivering', ramp: 5, rhythm: 'stach', ectopy: 'none', v: {hr: 104, spo2: 95, sys: 132, dia: 84, cvp: 7, rr: 22, etco2: 34, temp: 34.0, st: 0}},
+      {at: 90, say: 'Moderate hypothermia, slowing', rhythm: 'sbrady', v: {hr: 52, rr: 12, temp: 31.5, sys: 104, dia: 66, etco2: 30}},
+      {at: 180, say: 'Junctional rhythm', rhythm: 'junct', v: {hr: 42, temp: 30.0, rr: 8, sys: 92, dia: 58}},
+      {at: 270, say: 'Atrial fibrillation (slow)', rhythm: 'afib', v: {hr: 48, temp: 29.0, spo2: 90}},
+      {at: 360, say: 'Severe hypothermia', v: {hr: 38, temp: 28.0, rr: 5, sys: 70, dia: 40, spo2: 84, etco2: 24}},
+      {at: 420, say: 'VF', rhythm: 'vf', coarse: true, v: {rr: 0, etco2: 10, temp: 27.5}},
+      {at: 540, say: 'VF (fine)', coarse: false, v: {etco2: 7, temp: 27.0}},
+      {at: 640, say: 'Asystole', rhythm: 'asys'}],
+    // long QT from a drug: slow rate, PVCs, R-on-T, a run of polymorphic VT (drawn as pulseless VT), then VF
+    'Long QT drug → torsades → VF': [
+      {at: 0, say: 'QT-prolonging drug given', ramp: 5, rhythm: 'sbrady', ectopy: 'none', v: {hr: 54, spo2: 97, sys: 118, dia: 74, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
+      {at: 60, say: 'PVCs on a slow rate', ectopy: 'pvc', v: {hr: 52}},
+      {at: 150, say: 'Bigeminy', ectopy: 'bigem'},
+      {at: 230, say: 'R on T', ectopy: 'ront', v: {sys: 110, dia: 70}},
+      {at: 290, say: 'Runs of polymorphic VT', ectopy: 'nsvt'},
+      {at: 340, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 50, dia: 30}},
+      {at: 380, say: 'VF (coarse)', rhythm: 'vf', coarse: true, v: {etco2: 10}},
+      {at: 520, say: 'VF (fine)', coarse: false, v: {etco2: 7}}],
+    // inferior/anterior MI conduction disease: 1st degree, Wenckebach, Mobitz II, complete block with a slow escape
+    'Blocks: 1st degree → Mobitz II → complete': [
+      {at: 0, say: 'Chest pain, 1st degree block', ramp: 5, rhythm: 'avb1', ectopy: 'none', v: {hr: 72, spo2: 97, sys: 128, dia: 80, cvp: 7, rr: 18, etco2: 36, temp: 36.9, st: 1}},
+      {at: 90, say: '2nd degree, Mobitz I (Wenckebach)', rhythm: 'wenck', v: {hr: 60, st: 2}},
+      {at: 200, say: '2nd degree, Mobitz II', rhythm: 'mob2', v: {hr: 46, sys: 112, dia: 70}},
+      {at: 310, say: 'Complete (3rd degree) heart block', rhythm: 'avb3', v: {hr: 36, sys: 92, dia: 56, spo2: 95}},
+      {at: 420, say: 'Slow escape, hypotensive', v: {hr: 30, sys: 74, dia: 44, rr: 22}},
+      {at: 520, say: 'Paced (transcutaneous pacing works)', rhythm: 'paced', v: {hr: 70, sys: 108, dia: 66, spo2: 96}}],
+    // AF with a fast ventricular rate: rate climbs, pressure falls, the patient becomes unstable (needs cardioversion)
+    'AFib with RVR → unstable': [
+      {at: 0, say: 'Palpitations, AF', ramp: 5, rhythm: 'afib', ectopy: 'none', v: {hr: 118, spo2: 96, sys: 128, dia: 82, cvp: 7, rr: 20, etco2: 35, temp: 37.0, st: 0}},
+      {at: 60, say: 'Rapid ventricular rate', v: {hr: 148, sys: 116, dia: 76}},
+      {at: 150, say: 'Rate over 160, BP falling', v: {hr: 168, sys: 98, dia: 64, rr: 24, spo2: 94}},
+      {at: 240, say: 'Unstable: hypotensive, short of breath', v: {hr: 178, sys: 80, dia: 52, rr: 28, spo2: 91, st: -1}},
+      {at: 330, say: 'Ischemia, needs synchronized cardioversion', v: {hr: 182, sys: 72, dia: 46, st: -2}}],
+    // acute heart failure: hypertensive, then fluid floods the lungs (sats fall, breathing fast), then cardiogenic shock
+    'Flash pulmonary edema → shock': [
+      {at: 0, say: 'Short of breath lying flat', ramp: 5, rhythm: 'stach', ectopy: 'none', v: {hr: 108, spo2: 92, sys: 186, dia: 104, cvp: 14, rr: 28, etco2: 32, temp: 36.9, st: 0}},
+      {at: 60, say: 'Crackles, pink frothy sputum', v: {hr: 118, spo2: 86, rr: 34, cvp: 17}},
+      {at: 150, say: 'Severe hypoxia', v: {hr: 126, spo2: 80, sys: 168, dia: 98, rr: 38, etco2: 36}},
+      {at: 240, say: 'Tiring, pressure falling', v: {hr: 122, spo2: 76, sys: 112, dia: 72, rr: 30}},
+      {at: 330, say: 'Cardiogenic shock', ectopy: 'pvc', v: {hr: 128, spo2: 72, sys: 78, dia: 50, rr: 14, etco2: 46}},
+      {at: 420, say: 'VT with a pulse', rhythm: 'vt', vtPulse: true, ectopy: 'none', now: {hr: 172}, ramp: 15, v: {sys: 64, dia: 40}},
+      {at: 470, say: 'Pulseless VT', vtPulse: false, v: {rr: 0, etco2: 12}},
+      {at: 500, say: 'VF', rhythm: 'vf', coarse: true}],
+    // SVT that won't break: a sudden narrow fast rhythm, the pressure slowly falls
+    'SVT → unstable': [
+      {at: 0, say: 'Sudden racing heart (SVT)', ramp: 3, rhythm: 'svt', ectopy: 'none', now: {hr: 186}, v: {spo2: 97, sys: 122, dia: 80, cvp: 6, rr: 20, etco2: 34, temp: 36.9, st: 0}},
+      {at: 90, say: 'Still in SVT, lightheaded', v: {hr: 196, sys: 106, dia: 72}},
+      {at: 200, say: 'Hypotensive', v: {hr: 204, sys: 86, dia: 58, rr: 24, spo2: 95, st: -1}},
+      {at: 300, say: 'Unstable: needs synchronized cardioversion', v: {hr: 210, sys: 72, dia: 48, st: -2}}]
+  };
+  for (const k in add) if (!COURSES[k]) COURSES[k] = add[k];
+  try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
+})();
+</script>
 <script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
    The deterioration you clicked, drawn as a timeline under its status line in the Instructor panel: a horizontal line
    for the time, a tick going up at every step with what happens there (red where the rhythm changes, e.g. sinus tach
@@ -3122,19 +3248,27 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
       return {at: s.at, say: s.say || '', rhythm: rh, changed: ch, noPulse: pl || rh === 'pea' || rh === 'vf' || rh === 'asys', v: Object.assign({}, v)}; });
   }
   function draw(box, name, steps, el) {
-    const st = states(steps), end = Math.max(1, st[st.length - 1].at), W = 340, H = 150, L = 10, Rr = 12, ax = 128;
+    /* a progress bar like a video's: one section per rhythm (steps with the same rhythm run together), a divider between
+       sections, the rhythm's name under its section, and a round knob riding the bar where the patient is now */
+    const st = states(steps), last = st[st.length - 1].at, tail = Math.max(45, last * 0.1), end = last + tail;
+    const W = 340, L = 8, Rr = 8, y0 = 14, bh = 14;
     const X = at => L + (W - L - Rr) * Math.min(1, Math.max(0, at / end));
     let cur = -1; for (let i = 0; i < st.length; i++) if (st[i].at <= el) cur = i;
     const sel = pick != null ? pick : Math.max(0, cur);
-    let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-    s += `<line x1="${L}" y1="${ax}" x2="${W - Rr}" y2="${ax}" stroke="#5b738e" stroke-width="2"/>`;
-    st.forEach((p, i) => { const x = X(p.at), top = ax - (i % 2 ? 38 : 58), col = p.changed && i ? '#ff5a4f' : i === sel ? '#7fb0ff' : '#8aa0b8';
-      const lab = (p.changed && i ? rhName(p.rhythm) : p.say) || rhName(p.rhythm);
-      s += `<g data-i="${i}" style="cursor:pointer"><rect x="${x - 7}" y="${top - 4}" width="14" height="${ax - top + 10}" fill="transparent"/>`;
-      s += `<line x1="${x}" y1="${ax}" x2="${x}" y2="${top}" stroke="${col}" stroke-width="${i === sel ? 2.5 : 1.5}"/><circle cx="${x}" cy="${top}" r="${i === sel ? 3.5 : 2.5}" fill="${col}"/>`;
-      s += `<text x="${x + 2}" y="${top - 4}" fill="${col}" font-size="9.5" transform="rotate(-38 ${x + 2} ${top - 4})">${esc(lab.length > 26 ? lab.slice(0, 25) + '…' : lab)}</text></g>`; });
-    if (el >= 0) { const x = X(el); s += `<line x1="${x}" y1="${ax - 70}" x2="${x}" y2="${ax + 6}" stroke="#00e5ff" stroke-width="2" stroke-dasharray="3 2"/><polygon points="${x - 4},${ax + 9} ${x + 4},${ax + 9} ${x},${ax + 3}" fill="#00e5ff"/>`; }
-    s += `<text x="${L}" y="${ax + 18}" fill="#7f9ab8" font-size="9.5">0:00</text><text x="${W - Rr}" y="${ax + 18}" fill="#7f9ab8" font-size="9.5" text-anchor="end">${fmtMS(end)}</text>`;
+    const segs = []; st.forEach((p, i) => { const k = p.rhythm + '|' + p.noPulse; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: p.rhythm, noPulse: p.noPulse, at: p.at}) });
+    segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
+    const SH = {nsr: 'Sinus', sbrady: 'Sinus brady', stach: 'Sinus tach', afib: 'AFib', aflut: 'Flutter', svt: 'SVT', junct: 'Junctional', avb1: '1° block', wenck: 'Mobitz I', mob2: 'Mobitz II', avb3: '3° block', paced: 'Paced', idio: 'Idioventricular', vt: 'VT', vf: 'VF', asys: 'Asystole', pea: 'PEA'};
+    const label = g => g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' : (SH[g.rhythm] || rhName(g.rhythm));
+    /* colours that read at a glance: blue-grey while there is a pulse, amber for the dangerous fast/slow ones, red with no pulse, dark for asystole */
+    const fill = g => g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
+    const two = segs.some(g => X(g.to) - X(g.at) < 52);   /* narrow sections: alternate the names on two rows so they never collide */
+    let s = `<svg viewBox="0 0 ${W} ${two ? 70 : 54}" xmlns="http://www.w3.org/2000/svg">`;
+    segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = sel >= g.i0 && sel <= g.i1, mid = (x0 + x1) / 2, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
+      s += `<g data-i="${g.i0}" style="cursor:pointer"><rect x="${x0}" y="${y0}" width="${Math.max(1, x1 - x0)}" height="${bh}" fill="${fill(g)}" opacity="${on ? 1 : 0.78}"/>`;
+      s += `<text x="${mid}" y="${ty}" fill="${on ? '#e6eef8' : '#a9bbcf'}" font-size="10" font-weight="${on ? 700 : 500}" text-anchor="middle">${esc(label(g))}</text></g>`;
+      if (j) s += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + bh}" stroke="#0b1016" stroke-width="2"/>`; });
+    s += `<rect x="${L}" y="${y0}" width="${W - L - Rr}" height="${bh}" rx="3" fill="none" stroke="#5b738e" stroke-width="1"/>`;
+    if (el >= 0) { const x = X(el); s += `<line x1="${x}" y1="${y0 - 2}" x2="${x}" y2="${y0 + bh + 2}" stroke="#00e5ff" stroke-width="2"/><circle cx="${x}" cy="${y0}" r="6" fill="#00e5ff" stroke="#0b1016" stroke-width="2"/>`; }
     s += '</svg>';
     const p = st[sel], v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d;
     const hr = p.rhythm === 'asys' || p.rhythm === 'vf' ? '---' : n('hr', '--');
