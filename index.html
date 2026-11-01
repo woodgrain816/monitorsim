@@ -3220,63 +3220,88 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
 })();
 </script>
 <script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
-   The deterioration you clicked, drawn as a timeline under its status line in the Instructor panel: a horizontal line
-   for the time, a tick going up at every step with what happens there (red where the rhythm changes, e.g. sinus tach
-   -> PEA), a cyan marker for where the patient is now, and the step's numbers in the monitor's colours (HR, SpO2,
-   systolic/diastolic, RR). Click a tick to see that step's numbers; it follows the running step again on its own. */
+   The deterioration you clicked, as a progress bar under its status line in the Instructor panel, like a video's:
+   one section per rhythm with a divider between them and the rhythm's name underneath, and a round knob riding the
+   bar where the patient is now. Drag the knob (or click anywhere on the bar) to put the patient at ANY moment of the
+   scenario: the numbers are blended between the steps either side (half way from 98/72 to 82/58 is about 90/65), the
+   rhythm and everything else is whatever was in force at that moment, and the scenario carries on from there. The
+   numbers row shows the patient's numbers at the knob, in the monitor's colours. */
 (function () {
   const css = document.createElement('style');
-  css.textContent = `#tlViz{margin:8px 0 4px;background:#0b1016;border:1px solid #2a3a4d;border-radius:4px;padding:8px 8px 6px}
+  css.textContent = `#tlViz{margin:8px 0 4px;background:#0b1016;border:1px solid #2a3a4d;border-radius:4px;padding:8px 8px 6px;user-select:none}
 #tlViz .tv-h{display:flex;justify-content:space-between;align-items:baseline;color:#e6eef8;font-size:12.5px;font-weight:600;margin-bottom:2px}
 #tlViz .tv-h span{color:#7f9ab8;font-weight:400;font-size:11.5px}
-#tlViz svg{display:block;width:100%;height:auto;overflow:visible}
+#tlViz svg{display:block;width:100%;height:auto;overflow:visible;touch-action:none;cursor:pointer}
 #tlViz .tv-n{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-top:4px;font-variant-numeric:tabular-nums}
 #tlViz .tv-n b{font-size:20px;font-weight:700;line-height:1}
 #tlViz .tv-n i{font-style:normal;font-size:10.5px;color:#7f9ab8;margin-right:2px}
 #tlViz .tv-s{color:#c2cfdd;font-size:12px;margin-top:4px;line-height:1.35}`;
   document.head.appendChild(css);
   const C = {hr: '#3fcf74', spo2: '#4cb9c9', bp: '#d94a9c', rr: '#e3e35a'};
+  const SH = {nsr: 'Sinus', sbrady: 'Sinus brady', stach: 'Sinus tach', afib: 'AFib', aflut: 'Flutter', svt: 'SVT', junct: 'Junctional', avb1: '1° block', wenck: 'Mobitz I', mob2: 'Mobitz II', avb3: '3° block', paced: 'Paced', idio: 'Idioventricular', vt: 'VT', vf: 'VF', asys: 'Asystole', pea: 'PEA'};
   const rhName = r => (typeof RHYTHMS !== 'undefined' && RHYTHMS[r]) || r || '';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-  let pick = null, lastName = null, lastKey = '';
+  const W = 340, L = 8, Rr = 8, y0 = 14, bh = 14;
+  let lastName = null, lastKey = '', drag = null;
 
-  /* every step with the state the patient is in by then (numbers carry over from the steps before) */
+  /* every step with the whole state the patient is in from then on (numbers and flags carry over) */
   function states(steps) {
-    let v = {}, rh = '', pl = false;
-    return steps.map(s => { if (s.v) Object.assign(v, s.v); if (s.now) Object.assign(v, s.now); const ch = !!(s.rhythm && s.rhythm !== rh); if (s.rhythm) rh = s.rhythm;
-      if ('pulseless' in s) pl = !!s.pulseless; if ('vtPulse' in s) pl = !s.vtPulse;
-      return {at: s.at, say: s.say || '', rhythm: rh, changed: ch, noPulse: pl || rh === 'pea' || rh === 'vf' || rh === 'asys', v: Object.assign({}, v)}; });
+    let v = {}, rh = '', ect = 'none', pl = false, vtp = true, coarse = true, scene = null;
+    return steps.map(s => { if (s.v) Object.assign(v, s.v); if (s.now) Object.assign(v, s.now); if (s.rhythm) rh = s.rhythm; if (s.ectopy) ect = s.ectopy;
+      if ('pulseless' in s) pl = !!s.pulseless; if ('vtPulse' in s) vtp = !!s.vtPulse; if ('coarse' in s) coarse = !!s.coarse; if ('scene' in s) scene = s.scene || null;
+      return {at: s.at, say: s.say || '', rhythm: rh, ectopy: ect, pulseless: pl, vtPulse: vtp, coarse, scene,
+        noPulse: pl || (rh === 'vt' && !vtp) || rh === 'pea' || rh === 'vf' || rh === 'asys', v: Object.assign({}, v)}; });
+  }
+  const span = st => { const last = st[st.length - 1].at; return last + Math.max(45, last * 0.1) };
+  /* the patient at any moment: the step in force, with the numbers part of the way to the next step's */
+  function at(st, el) {
+    let i = 0; for (let k = 0; k < st.length; k++) if (st[k].at <= el) i = k;
+    const a = st[i], b = st[i + 1], f = b ? Math.min(1, Math.max(0, (el - a.at) / Math.max(1, b.at - a.at))) : 0, v = {};
+    for (const k of new Set([...Object.keys(a.v), ...Object.keys(b ? b.v : {})])) { const x = a.v[k], y = b && b.v[k] != null ? b.v[k] : x; v[k] = x == null ? y : x + (y - x) * f; }
+    return {i, f, s: a, next: b, v};
+  }
+  /* put the running patient at that moment */
+  function seek(name, el) {
+    const steps = courseSteps(name); if (!steps) return; const st = states(steps);
+    if (CRS.name !== name) courseStart(name);
+    el = Math.max(0, Math.min(span(st) - 0.01, el));
+    const p = at(st, el), s = p.s;
+    CRS.t0 = simT - el / CRS.speed; CRS.i = p.i + 1; CRS.say = s.say;
+    R.ectopy = s.ectopy; R.pulseless = s.pulseless; R.vtPulse = s.vtPulse; R.vfCoarse = s.coarse; R.scene = s.scene; R.artifact = s.scene === 'seizure';
+    if (s.rhythm && s.rhythm !== R.rhythm) setRhythm(s.rhythm, true);
+    /* the numbers: straight to where they are at this moment, then on towards the next step on its own timing */
+    for (const k in p.v) setTarget(k, p.v[k], 0);
+    if (p.next) { const left = (p.next.at - el) / CRS.speed; for (const k in p.next.v) setTarget(k, p.next.v[k], Math.max(0.5, left)); }
+    try { courseShow(); } catch (e) {}
   }
   function draw(box, name, steps, el) {
-    /* a progress bar like a video's: one section per rhythm (steps with the same rhythm run together), a divider between
-       sections, the rhythm's name under its section, and a round knob riding the bar where the patient is now */
-    const st = states(steps), last = st[st.length - 1].at, tail = Math.max(45, last * 0.1), end = last + tail;
-    const W = 340, L = 8, Rr = 8, y0 = 14, bh = 14;
-    const X = at => L + (W - L - Rr) * Math.min(1, Math.max(0, at / end));
-    let cur = -1; for (let i = 0; i < st.length; i++) if (st[i].at <= el) cur = i;
-    const sel = pick != null ? pick : Math.max(0, cur);
-    const segs = []; st.forEach((p, i) => { const k = p.rhythm + '|' + p.noPulse; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: p.rhythm, noPulse: p.noPulse, at: p.at}) });
+    const st = states(steps), end = span(st), X = t => L + (W - L - Rr) * Math.min(1, Math.max(0, t / end));
+    const knob = drag ? drag.el : el, p = at(st, Math.max(0, knob)), here = knob >= 0;
+    const segs = []; st.forEach((q, i) => { const k = q.rhythm + '|' + q.noPulse; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, at: q.at}) });
     segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
-    const SH = {nsr: 'Sinus', sbrady: 'Sinus brady', stach: 'Sinus tach', afib: 'AFib', aflut: 'Flutter', svt: 'SVT', junct: 'Junctional', avb1: '1° block', wenck: 'Mobitz I', mob2: 'Mobitz II', avb3: '3° block', paced: 'Paced', idio: 'Idioventricular', vt: 'VT', vf: 'VF', asys: 'Asystole', pea: 'PEA'};
     const label = g => g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' : (SH[g.rhythm] || rhName(g.rhythm));
-    /* colours that read at a glance: blue-grey while there is a pulse, amber for the dangerous fast/slow ones, red with no pulse, dark for asystole */
+    /* blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
     const fill = g => g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
-    const two = segs.some(g => X(g.to) - X(g.at) < 52);   /* narrow sections: alternate the names on two rows so they never collide */
+    const two = segs.some(g => X(g.to) - X(g.at) < 52);
     let s = `<svg viewBox="0 0 ${W} ${two ? 70 : 54}" xmlns="http://www.w3.org/2000/svg">`;
-    segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = sel >= g.i0 && sel <= g.i1, mid = (x0 + x1) / 2, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
-      s += `<g data-i="${g.i0}" style="cursor:pointer"><rect x="${x0}" y="${y0}" width="${Math.max(1, x1 - x0)}" height="${bh}" fill="${fill(g)}" opacity="${on ? 1 : 0.78}"/>`;
-      s += `<text x="${mid}" y="${ty}" fill="${on ? '#e6eef8' : '#a9bbcf'}" font-size="10" font-weight="${on ? 700 : 500}" text-anchor="middle">${esc(label(g))}</text></g>`;
+    segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = here && p.i >= g.i0 && p.i <= g.i1, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
+      s += `<rect x="${x0}" y="${y0}" width="${Math.max(1, x1 - x0)}" height="${bh}" fill="${fill(g)}" opacity="${on ? 1 : 0.75}"/>`;
+      s += `<text x="${(x0 + x1) / 2}" y="${ty}" fill="${on ? '#e6eef8' : '#a9bbcf'}" font-size="10" font-weight="${on ? 700 : 500}" text-anchor="middle">${esc(label(g))}</text>`;
       if (j) s += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + bh}" stroke="#0b1016" stroke-width="2"/>`; });
     s += `<rect x="${L}" y="${y0}" width="${W - L - Rr}" height="${bh}" rx="3" fill="none" stroke="#5b738e" stroke-width="1"/>`;
-    if (el >= 0) { const x = X(el); s += `<line x1="${x}" y1="${y0 - 2}" x2="${x}" y2="${y0 + bh + 2}" stroke="#00e5ff" stroke-width="2"/><circle cx="${x}" cy="${y0}" r="6" fill="#00e5ff" stroke="#0b1016" stroke-width="2"/>`; }
+    if (here) { const x = X(knob); s += `<rect x="${L}" y="${y0 + bh - 3}" width="${Math.max(0, x - L)}" height="3" fill="#00e5ff" opacity=".55"/><circle cx="${x}" cy="${y0 + bh / 2}" r="7.5" fill="#00e5ff" stroke="#0b1016" stroke-width="2"/>`; }
     s += '</svg>';
-    const p = st[sel], v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d;
-    const hr = p.rhythm === 'asys' || p.rhythm === 'vf' ? '---' : n('hr', '--');
-    const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${hr}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${p.noPulse ? '--' : n('spo2', '--')}</b></span>` +
-      `<span><i>NBP</i><b style="color:${C.bp}">${p.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
-    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(p.at)}</b> · ${esc(rhName(p.rhythm))}${p.noPulse ? ' · no pulse' : ''} — ${esc(p.say)}</div>`;
-    box.innerHTML = `<div class="tv-h">${esc(name)}<span>${el >= 0 ? fmtMS(el) + ' / ' + fmtMS(end) : 'not running'}${pick != null ? ' · step ' + (pick + 1) + ' of ' + st.length : ''}</span></div>` + s + num + sub;
-    box.querySelectorAll('g[data-i]').forEach(g => g.onclick = () => { const i = +g.dataset.i; pick = pick === i ? null : i; tick(true); });
+    const v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d, q = p.s, rate = q.rhythm === 'asys' || q.rhythm === 'vf';
+    const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${rate ? '---' : n('hr', '--')}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${q.noPulse ? '--' : n('spo2', '--')}</b></span>` +
+      `<span><i>NBP</i><b style="color:${C.bp}">${q.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
+    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
+    box.innerHTML = `<div class="tv-h">${esc(name)}<span>${drag ? 'let go to go here · ' : ''}${here ? fmtMS(knob) + ' / ' + fmtMS(end) : 'drag the knob or click the bar'}</span></div>` + s + num + sub;
+    /* drag or click: the window follows the pointer even when it leaves the bar (the bar is redrawn as it moves) */
+    const elOf = ev => { const sv = box.querySelector('svg'), r = sv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W; return Math.max(0, Math.min(end, (x - L) / (W - L - Rr) * end)); };
+    box.querySelector('svg').onpointerdown = ev => { ev.preventDefault(); drag = {name, el: elOf(ev)}; draw(box, name, steps, el);
+      const mv = e2 => { drag.el = elOf(e2); draw(box, name, steps, el); };
+      const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); const d = drag; drag = null; seek(d.name, d.el); lastKey = ''; tick(true); };
+      addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up); };
   }
   function tick(force) {
     if (typeof CRS === 'undefined' || typeof courseSteps !== 'function') return;
@@ -3285,13 +3310,15 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     const name = CRS.name || lastName; const steps = name && courseSteps(name);
     if (!steps || !steps.length) { if (box) box.remove(); return; }
     if (!box || box.previousElementSibling !== stEl) { if (box) box.remove(); box = document.createElement('div'); box.id = 'tlViz'; stEl.after(box); force = true; }
-    if (name !== lastName) { pick = null; lastName = name; }
+    lastName = name;
+    if (drag) return;   /* while dragging, the drag draws */
     const el = CRS.name === name ? (simT - CRS.t0) * CRS.speed : -1;
-    const key = name + '|' + Math.floor(el) + '|' + pick; if (!force && key === lastKey) return; lastKey = key;
+    const key = name + '|' + Math.floor(el * 2) + '|' + CRS.speed; if (!force && key === lastKey) return; lastKey = key;
     draw(box, name, steps, el);
   }
-  /* clicking a deterioration starts it: draw its timeline straight away */
-  if (typeof courseStart === 'function') { const c0 = courseStart; courseStart = function () { const r = c0.apply(this, arguments); lastName = CRS.name; pick = null; tick(true); return r; }; }
+  /* clicking a deterioration starts it: its bar appears straight away */
+  if (typeof courseStart === 'function') { const c0 = courseStart; courseStart = function () { const r = c0.apply(this, arguments); lastName = CRS.name; tick(true); return r; }; }
+  window.__tlSeek = seek;
   setInterval(() => tick(false), 500);
 })();
 </script>
