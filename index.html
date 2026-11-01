@@ -4025,6 +4025,561 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   setInterval(() => tick(false), 500);
 })();
 </script>
+<script>/* Monitor picker (website copy only; the House Monitor page itself is never edited).
+   At every start the page asks which monitor to show: Default Monitor (the page's own TV-style screen), GE CARESCAPE B450
+   (the page's own B450 screen), Philips IntelliVue MX800 or Philips IntelliVue MX100 (screens drawn here), and how big:
+   Full screen (the same layout stretched to the display), Actual size (the real screen's shape, letter-boxed) or Life
+   size (the real screen's physical size, calibrated against a bank card). Only the monitor and its alarms change: the
+   Instructor panel, the patient model and every scenario are the same on all of them.
+   Monitor Setup gets two more tabs, Monitor (the same choices) and Credits. */
+(function () {
+  const MON = window.MONITORS = {
+    house:     {name: 'Default Monitor', sub: 'The original screen and alarm sounds of this simulator', w: 1280, h: 800, mm: [261, 163]},
+    carescape: {name: 'CARESCAPE B450', maker: 'GE HealthCare', sub: '12" bedside / transport monitor, 1024 × 768', w: 1024, h: 768, mm: [244, 183]},
+    mx800:     {name: 'IntelliVue MX800', maker: 'Philips', sub: '19" bedside monitor, 1680 × 1050', w: 1680, h: 1050, mm: [408, 255]},
+    mx100:     {name: 'IntelliVue MX100', maker: 'Philips', sub: '6.1" compact transport monitor, 1024 × 480', w: 1024, h: 480, mm: [140, 65]},
+  };
+  const ORDER = ['house', 'carescape', 'mx800', 'mx100'];
+  const SIZES = [['fill', 'Full screen', 'The same layout, stretched to fill the display'],
+                 ['actual', 'Actual size', "The real monitor's screen shape (may leave black bars)"],
+                 ['life', 'Life size', "The real screen's physical size (set it up once with a bank card)"]];
+  const isPh = () => S.display === 'mx800' || S.display === 'mx100';
+  window.isPhilips = isPh;
+  if (!MON[S.display]) S.display = 'house';
+  if (!S.sizeMode) S.sizeMode = 'fill';
+
+  /* ---------- choosing a monitor ---------- */
+  function setMonitor(id) {
+    if (id === 'house') setSoundStyle('tv');
+    else if (id === 'carescape') setSoundStyle('real');
+    else { S.toneSet = S.phTones === 'iec' ? 'phIec' : 'phTrad'; S.tvFlatline = false; S.display = id; }
+    S.monitor = id; save(); try { syncSoundPick(); } catch (e) {}
+    fit(); layout(); updateTop();
+  }
+  window.setMonitor = setMonitor;
+
+  /* ---------- size: full screen, actual (real aspect) or life size (real millimetres) ---------- */
+  const PXMM_DEFAULT = 96 / 25.4;   // CSS pixels per millimetre the browser claims; real screens differ, hence the card
+  const origFit = fit;
+  fit = function () {
+    const m = MON[S.display] || MON.house, mode = S.sizeMode || 'fill';
+    if (mode === 'fill') { origFit(); return; }
+    const d = $('#device');
+    const phone = /Android|iPhone|iPad|Mobile|; wv/.test(navigator.userAgent);
+    d.className = (S.bezel ? 'bezel' : 'nobezel') + (isHouse() ? ' housedev' : '') + (phone ? ' phone' : '') + (isPh() ? ' phdev' : '');
+    const H = S.bezel ? 892 : phone ? 800 : 812, sw = Math.round(800 * m.w / m.h), W = S.bezel ? sw + 60 : sw;
+    let k = Math.min(innerWidth / W, innerHeight / H);
+    if (mode === 'life') {
+      // the screen (800 layout pixels tall) is drawn m.mm[1] millimetres tall
+      const want = m.mm[1] * (S.pxPerMm || PXMM_DEFAULT) / 800;
+      lifeTooBig = want > k + 1e-6; k = Math.min(k, want);
+    }
+    scale = k;
+    d.style.transform = `scale(${scale})`;
+    d.style.left = Math.round((innerWidth - W * scale) / 2) + 'px'; d.style.top = Math.round((innerHeight - H * scale) / 2) + 'px';
+    d.style.width = W + 'px';
+    $('#alarmLight').style.left = Math.round((W - 400) / 2) + 'px';
+    for (const sel of ['#screen', '#top', '#bottomRow', '#menubar']) $(sel).style.width = sw + 'px';
+    if (sw !== SW) { SW = sw; if (rows) layout(); }
+    resizeCanvas();
+  };
+  let lifeTooBig = false;
+  // the page's own resize handler holds the old fit; this one runs after it and wins
+  addEventListener('resize', () => { if ((S.sizeMode || 'fill') !== 'fill') fit(); });
+
+  /* ---------- the start-up picker ---------- */
+  const css = document.createElement('style');
+  css.textContent = `
+#monPick{position:fixed;inset:0;z-index:200;background:#07090c;color:#e8edf3;display:flex;align-items:center;justify-content:center;
+  font-family:"Segoe UI",Tahoma,Arial,sans-serif;overflow:auto;padding:16px;box-sizing:border-box}
+#monPick .mp{width:min(760px,100%);margin:auto}
+#monPick h1{font-size:22px;font-weight:600;margin:0 0 4px}
+#monPick .s{color:#8fa3b8;font-size:13px;margin:0 0 14px}
+#monPick .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+#monPick .c{background:#121a24;border:2px solid #263547;border-radius:8px;padding:12px;cursor:pointer;text-align:left;color:inherit;font-family:inherit}
+#monPick .c:hover{border-color:#46607d}
+#monPick .c.on{border-color:#4f9dff;background:#14243a}
+#monPick .c b{display:block;font-size:16px;font-weight:600}
+#monPick .c i{display:block;font-style:normal;color:#8fa3b8;font-size:12px;margin-top:3px;line-height:1.35}
+#monPick .c u{display:block;text-decoration:none;color:#c9d6e4;font-size:12px;margin-top:6px}
+#monPick h2{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#7f9ab8;margin:18px 0 8px;font-weight:600}
+#monPick .z{display:flex;gap:8px;flex-wrap:wrap}
+#monPick .z .c{flex:1 1 180px}
+#monPick .go{margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#monPick .go button{background:#2f6db5;border:1px solid #7fb0ff;color:#fff;font-size:17px;padding:10px 28px;border-radius:6px;cursor:pointer;font-family:inherit}
+#monPick .go span{color:#8fa3b8;font-size:12px}
+#monPick .cal{margin-top:10px;background:#121a24;border:1px solid #263547;border-radius:8px;padding:10px;display:none}
+#monPick .cal.on{display:block}
+#monPick .card{width:86px;height:54px;border:2px solid #4f9dff;border-radius:6px;background:rgba(79,157,255,.12);margin:8px 0}
+#monPick input[type=range]{width:100%}
+#monPick .ft{margin-top:16px;color:#6f8399;font-size:11.5px;line-height:1.45}
+`;
+  document.head.appendChild(css);
+  let pickId = 'house';
+  function showPicker() {
+    pickId = 'house';   // he wants it to start on the Default Monitor every time
+    let p = document.getElementById('monPick'); if (p) p.remove();
+    p = document.createElement('div'); p.id = 'monPick';
+    p.innerHTML = `<div class="mp"><h1>Choose a monitor</h1><p class="s">Only the monitor screen and its alarms change: the Instructor controls and every scenario stay the same.</p>
+      <div class="g" id="mpMon">${ORDER.map(id => { const m = MON[id]; return `<button class="c" data-m="${id}"><b>${m.name}</b><i>${m.maker ? m.maker + ' · ' : ''}${m.sub}</i></button>`; }).join('')}</div>
+      <h2>Size</h2><div class="z" id="mpSize">${SIZES.map(([k, n, d]) => `<button class="c" data-z="${k}"><b>${n}</b><i>${d}</i></button>`).join('')}</div>
+      <div class="cal" id="mpCal"><b style="font-size:13px">Life size set-up</b><div style="color:#8fa3b8;font-size:12px;margin-top:3px">Hold a bank card (or any ID-1 card) against the screen and move the slider until the blue box is exactly the size of the card. This is remembered.</div>
+        <div class="card" id="mpCard"></div><input type="range" id="mpPx" min="1.5" max="12" step="0.01"><div id="mpNote" style="color:#c9a24a;font-size:12px;margin-top:4px"></div></div>
+      <div class="go"><button id="mpGo">Turn on</button><span>You can change this later in Monitor Setup &rarr; Monitor.</span></div>
+      <div class="ft">Training and entertainment simulation only. Not a medical device. Not affiliated with, endorsed or sponsored by GE HealthCare or Philips. See Monitor Setup &rarr; Credits.</div></div>`;
+    document.body.appendChild(p);
+    const px = p.querySelector('#mpPx'), card = p.querySelector('#mpCard');
+    const sync = () => {
+      p.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('on', b.dataset.m === pickId));
+      p.querySelectorAll('[data-z]').forEach(b => b.classList.toggle('on', b.dataset.z === S.sizeMode));
+      p.querySelector('#mpCal').classList.toggle('on', S.sizeMode === 'life');
+      const k = S.pxPerMm || PXMM_DEFAULT; px.value = k; card.style.width = (85.6 * k) + 'px'; card.style.height = (53.98 * k) + 'px';
+      const m = MON[pickId], need = m.mm[1] * k / 800 * 812, needW = m.mm[0] * k;
+      p.querySelector('#mpNote').textContent = S.sizeMode === 'life' && (need > innerHeight || needW > innerWidth)
+        ? `The real ${m.name} screen (${m.mm[0]} × ${m.mm[1]} mm) is bigger than this display, so it is shown as large as fits.` : '';
+    };
+    p.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { pickId = b.dataset.m; sync(); });
+    p.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { S.sizeMode = b.dataset.z; save(); sync(); });
+    px.oninput = () => { S.pxPerMm = +px.value; save(); sync(); };
+    p.querySelector('#mpGo').onclick = () => { ensureAudio(); p.remove(); setMonitor(pickId); if (!powered) powerOn(); };
+    sync();
+  }
+  window.showMonitorPicker = showPicker;
+  // the operator station (or ?autostart) may switch the monitor on while the picker is up: the picker then goes away
+  setInterval(() => { const p = document.getElementById('monPick'); if (p && powered) p.remove(); }, 500);
+  if (!new URLSearchParams(location.search).has('autostart')) {
+    let resume = false; try { resume = sessionStorage.getItem('hm.resume') === '1'; } catch (e) {}
+    if (!powered && !resume) showPicker();
+  }
+
+  /* ---------- Monitor Setup: Monitor and Credits tabs; "House M.D." is called Default Monitor ---------- */
+  const origOpenMenu = openMenu;
+  openMenu = function (title, tabs, idx) {
+    if (title === 'Monitor Setup' && !tabs.some(t => t.name === 'Monitor')) {
+      tabs = tabs.slice();
+      tabs.splice(0, 0, {name: 'Monitor', build: b => {
+        row(b, 'Monitor', choice(ORDER.map(id => [id, MON[id].name]), () => S.display, v => { setMonitor(v); renderMenu(); }));
+        row(b, 'Size', choice(SIZES.map(s => [s[0], s[1]]), () => S.sizeMode || 'fill', v => { S.sizeMode = v; save(); fit(); renderMenu(); }));
+        if (S.sizeMode === 'life') row(b, 'Life size set-up', button('Calibrate with a card', () => { closeMenu(); showPicker(); pickId = S.display; }));
+        if (isPh()) row(b, 'Alarm sounds', choice([['trad', 'Philips Traditional'], ['iec', 'ISO / IEC 60601-1-8']], () => S.phTones === 'iec' ? 'iec' : 'trad',
+          v => { S.phTones = v; S.toneSet = v === 'iec' ? 'phIec' : 'phTrad'; save(); renderMenu(); }), button('Test', () => testAlarm('high')));
+        if (S.display === 'carescape') row(b, 'Alarm sounds', choice([['carescape', 'CARESCAPE Legacy'], ['geIec', 'CARESCAPE IEC']], () => S.toneSet === 'geIec' ? 'geIec' : 'carescape',
+          v => { S.toneSet = v; save(); renderMenu(); }), button('Test', () => testAlarm('high')));
+        row(b, 'Start-up', button('Show the monitor picker', () => { closeMenu(); powerOff(); showPicker(); }));
+        b.appendChild(el('div', 'note', 'Only the screen and its alarms change: the patient, the Instructor controls and every scenario are the same on all monitors.'));
+      }});
+      tabs.push({name: 'Credits', build: b => { b.innerHTML = CREDITS; }});
+      // the tab that used to be first is now second
+      idx = (idx || 0) + (idx ? 1 : 0);
+    }
+    return origOpenMenu(title, tabs, idx);
+  };
+  // labels in the page's own menus: the TV-style screen is the Default Monitor here
+  const origRender = renderMenu;
+  renderMenu = function () {
+    origRender();
+    const body = $('#menuBody'); if (!body) return;
+    body.querySelectorAll('button, option, .k, .note').forEach(e => {
+      if (e.children.length) return;
+      const t = e.textContent;
+      const n = t.replace(/House M\.D\. set monitor|House M\.D\. monitor|House M\.D\./g, 'Default Monitor').replace(/GE legacy \/ TV \(House MD style\)/, 'Default Monitor sounds')
+        .replace(/^House Monitor v/, 'Patient Monitor v');
+      if (n !== t) e.textContent = n;
+    });
+    // the page's own two-way screen pickers are replaced by Monitor Setup -> Monitor
+    body.querySelectorAll('.row').forEach(r => { const k = r.querySelector('.k'); if (k && /^(Screen style|Monitor style)$/.test(k.textContent)) r.remove(); });
+  };
+
+  /* =====================================================================================================
+     Philips IntelliVue screens (MX800, MX100), from the IntelliVue Instructions for Use (MX400-MX800 Rel. J/K,
+     MX100/X3 Rel. N):
+     - information line on top with the alarm status area: patient alarms *** red / ** yellow / * short yellow, technical
+       alarms (INOPs) !!! red / !! yellow / plain light blue; several messages take turns every 2 s with an arrow
+     - factory colours ECG green, SpO2 cyan, ABP red, CVP blue, NBP red, Resp and CO2 yellow, Temp green
+     - alarming numerics flash; the alarm lamp's right half is the patient alarm, the left half the INOP
+       (cyan steady, yellow INOP 1.0 s on/off, red INOP 0.25 s on/off)
+     - MX800: SmartKeys along the bottom with the permanent keys Silence, Pause Alarms, Main Setup, Main Screen
+     - MX100: 6.1" 1024 x 480 screen with its permanent keys down the left: Acknowledge (yellow while alarms are active,
+       touch = acknowledge, hold = pause alarms), Screen, Keys (SmartKeys and Main Setup)
+     ===================================================================================================== */
+  const PHC = {ecg: '#3cff3c', art: '#ff3030', cvp: '#4f86ff', spo2: '#22e8ff', co2: '#fff23a', resp: '#fff23a', nibp: '#ff3030', temp: '#3cff3c'};
+  const G = {left: 0, head: 44, status: 22, keys: 58, numRow: 104, numW: 340};
+  const pcss = document.createElement('style');
+  pcss.textContent = `
+#screen.philips{background:#000;font-family:Arial,Helvetica,sans-serif}
+.philips #ptInfo,.philips #alarmArea,.philips #sysInfo,.philips #hHdr,.philips #hMsg{display:none!important}
+.philips #top{background:#000;border-bottom:1px solid #3a3f46}
+#phHdr{display:none}
+.philips #phHdr{display:flex;position:absolute;left:0;top:0;right:0;bottom:0;align-items:stretch;gap:4px;padding:3px 6px;color:#dfe3e8;font-size:15px}
+#phHdr .pi{display:flex;flex-direction:column;justify-content:center;line-height:1.15;white-space:nowrap;overflow:hidden;cursor:pointer}
+#phHdr .pi b{font-size:17px;color:#fff}
+#phHdr .af{flex:1;display:flex;align-items:center;padding:0 10px;font-size:19px;white-space:nowrap;overflow:hidden;border-radius:2px;cursor:pointer;min-width:0}
+#phHdr .af.r{background:#e01818;color:#fff}#phHdr .af.y{background:#ffe100;color:#000}#phHdr .af.c{background:#5ad7f5;color:#000}
+#phHdr .af .ar{margin-left:auto;padding-left:10px;font-size:15px}
+#phHdr .af .ck{margin-right:6px}
+#phHdr .af.pz{color:#ff4b4b;font-weight:700}
+#phHdr .clk{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;line-height:1.15;white-space:nowrap;font-size:14px}
+#phHdr .clk b{font-size:17px;font-weight:400;color:#fff}
+.philips .pw{border:none;border-bottom:1px solid #2b3036;background:#000}
+.philips .phn .lbl{font-size:16px;font-weight:400;left:8px;top:4px}
+.philips .phn .lbl small{font-size:12px;margin-left:5px;opacity:.85}
+.philips .phn .lim{font-size:12px;line-height:1.15;text-align:left;opacity:.95}
+.philips .phn .big{font-weight:400;letter-spacing:0;font-family:Arial,Helvetica,sans-serif}
+.philips .phn .sub{font-size:14px}
+.philips .phn .msg{font-weight:400;font-size:13px}
+.philips .flash-high,.philips .flash-medium{animation:none!important;background:#000!important}
+.philips .solid-low{background:#000!important}.philips .solid-low *{color:inherit!important}
+.philips.phoff .flash-high .big,.philips.phoff .flash-medium .big{visibility:hidden}
+.philips .wlbl{font-weight:400;font-size:15px}
+.philips .wmsg{font-weight:400;font-size:16px}
+.philips #bottomRow{display:block;border-top:1px solid #2b3036}
+.philips #bottomRow>.pw{position:absolute}
+#phStatus{display:none}
+.philips #phStatus{display:block;position:absolute;left:0;right:0;height:22px;padding:2px 10px;font-size:14px;color:#cfd5dc;background:#0d0f12;border-top:1px solid #2b3036;white-space:nowrap;overflow:hidden}
+.philips #menubar{background:#0d0f12;border-top:1px solid #2b3036;gap:4px;padding:5px 5px}
+.philips .mk{border:1px solid #6d7a8c;border-radius:4px;background:linear-gradient(#53637a,#34404f);color:#fff;font-size:13px;flex:1 1 0;min-width:0}
+.philips .mk:hover{background:linear-gradient(#61738c,#3d4a5b)}
+.philips .mk.pk{background:linear-gradient(#d9dde3,#a9b0ba);color:#111;border-color:#e6e9ed}
+.philips #mkPause.mk.pk.sil{background:linear-gradient(#f2f4f6,#c3c9d1);color:#111;flex:1 1 0}
+.philips .mk .ic{font-size:17px}
+.philips .mk.paused{background:linear-gradient(#ff6b6b,#c41f1f)!important;color:#fff!important}
+#phKeys{display:none}
+.philips.mx100 #phKeys{display:flex;flex-direction:column;gap:8px;position:absolute;left:0;top:0;bottom:0;padding:8px;background:#15181d;border-right:1px solid #2b3036;box-sizing:border-box}
+#phKeys div{flex:1;border-radius:10px;background:linear-gradient(#4d5a6c,#323c49);border:1px solid #6d7a8c;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:17px;cursor:pointer;text-align:center;gap:6px}
+#phKeys .ack{flex:2.2;font-size:18px}
+#phKeys .ack.al{background:linear-gradient(#ffe86a,#e7c400);color:#111;border-color:#fff3a8}
+#phKeys .ack.pz{background:linear-gradient(#ff6b6b,#c41f1f);color:#fff}
+#phKeys svg{width:44px;height:44px}
+.philips.mx100 #menubar,.philips.mx100 #bottomRow{display:none!important}
+#phSmart{position:absolute;z-index:22;background:#15181d;border:1px solid #6d7a8c;border-radius:8px;padding:10px;display:none;grid-template-columns:repeat(4,1fr);gap:8px;box-shadow:0 8px 30px rgba(0,0,0,.8)}
+#phSmart.on{display:grid}
+#phSmart div{background:linear-gradient(#53637a,#34404f);border:1px solid #6d7a8c;border-radius:6px;color:#fff;font-size:17px;padding:16px 8px;text-align:center;cursor:pointer}
+`;
+  document.head.appendChild(pcss);
+  const scr = $('#screen');
+  const phHdr = el('div'); phHdr.id = 'phHdr'; $('#top').appendChild(phHdr);
+  const phStatus = el('div'); phStatus.id = 'phStatus'; scr.appendChild(phStatus);
+  const phKeys = el('div'); phKeys.id = 'phKeys'; scr.appendChild(phKeys);
+  const phSmart = el('div'); phSmart.id = 'phSmart'; scr.appendChild(phSmart);
+
+  function phGeom() {
+    const m1 = S.display === 'mx100';
+    G.left = m1 ? 190 : 0; G.head = m1 ? 64 : 44; G.status = m1 ? 0 : 22; G.keys = m1 ? 0 : 58; G.numRow = m1 ? 0 : 108;
+    G.numW = Math.round((SW - G.left) * (m1 ? 0.36 : 0.29));
+    WAVE_TOP = G.head; WAVE_W = SW - G.left - G.numW; WAVE_H = 800 - G.head - G.numRow - G.status - G.keys;
+  }
+  const clearSt = (sel, keys) => { const e = $(sel); if (e) for (const k of keys) e.style[k] = ''; };
+  const origApply = applyGeometry;
+  applyGeometry = function () {
+    const ph = isPh();
+    scr.classList.toggle('philips', ph); scr.classList.toggle('mx800', S.display === 'mx800'); scr.classList.toggle('mx100', S.display === 'mx100');
+    phSmart.classList.remove('on');
+    if (!ph) {
+      clearSt('#menubar', ['top', 'height', 'left']); clearSt('#waveCv', ['left']); clearSt('#menuWin', ['left', 'top']);
+      clearSt('#top', ['left']); clearSt('#bottomRow', ['left']);
+      for (const sel of ['#top', '#bottomRow', '#menubar']) $(sel).style.width = SW + 'px';
+      origApply(); return;
+    }
+    scr.classList.remove('house'); $('#device').classList.remove('housedev');
+    phGeom();
+    const st = (sel, c) => Object.assign($(sel).style, c);
+    st('#top', {height: G.head + 'px', left: G.left + 'px', width: (SW - G.left) + 'px'});
+    st('#waveCv', {top: G.head + 'px', left: G.left + 'px'});
+    st('#params', {left: (G.left + WAVE_W) + 'px', top: G.head + 'px', width: G.numW + 'px', height: WAVE_H + 'px'});
+    st('#bottomRow', {top: (G.head + WAVE_H) + 'px', height: G.numRow + 'px', left: '0px', width: SW + 'px'});
+    st('#phStatus', {top: (800 - G.keys - G.status) + 'px'});
+    st('#menubar', {top: (800 - G.keys) + 'px', height: G.keys + 'px', left: '0px', width: SW + 'px'});
+    st('#frozen', {top: (G.head + 6) + 'px'});
+    st('#menuWin', {left: (G.left + 8) + 'px', top: (G.head + 40) + 'px'});
+    phKeys.style.width = G.left + 'px';
+    $('#bezelBottom .brand').innerHTML = S.display === 'mx100' ? 'IntelliVue&nbsp; MX100' : 'IntelliVue&nbsp; MX800';
+    buildMenuBar(); buildPhKeys();
+  };
+  // the MX100 shows one ECG; its wide, short screen holds up to four waves
+  const origLayout = layout;
+  layout = function () {
+    if (S.display !== 'mx100') return origLayout();
+    const e2 = S.showEcg2; S.showEcg2 = false;
+    try { origLayout(); } finally { S.showEcg2 = e2; }
+  };
+  const origColor = rowColor;
+  rowColor = function (id) {
+    if (!isPh()) return origColor(id);
+    return {ecg1: PHC.ecg, ecg2: PHC.ecg, art: PHC.art, cvp: PHC.cvp, spo2: PHC.spo2, co2: PHC.co2, resp: PHC.resp}[id];
+  };
+
+  /* ---------- wave labels ---------- */
+  const origLabels = buildWaveLabels;
+  buildWaveLabels = function () {
+    if (!isPh()) return origLabels();
+    const box = $('#waveLabels'); box.innerHTML = '';
+    for (const r of rows) {
+      const c = rowColor(r.id), x = G.left + 8, y = G.head + r.y + 2;
+      const lbl = place(el('div', 'wlbl'), {left: x + 'px', top: y + 'px', color: c});
+      lbl.innerHTML = {ecg1: S.lead1, ecg2: S.lead2, art: 'ABP', cvp: 'CVP', spo2: 'Pleth', co2: 'CO<sub>2</sub>', resp: 'Resp'}[r.id] || '';
+      box.appendChild(lbl);
+      if (r.id === 'ecg1' || r.id === 'ecg2') {
+        // 1 mV calibration bar at the start of the ECG wave, as on the IntelliVue
+        const mv = Math.round(10 * PXMM * S.gain * 0.85), mid = G.head + r.y + r.h / 2 + 8;
+        box.appendChild(place(el('div', 'wlbl'), {left: (x + 30) + 'px', top: (mid - mv) + 'px', width: '7px', height: mv + 'px',
+          borderLeft: '1px solid ' + c, borderTop: '1px solid ' + c, borderRight: '1px solid ' + c}));
+        box.appendChild(place(el('div', 'wlbl', '1 mV'), {left: (x + 42) + 'px', top: (mid - mv - 2) + 'px', color: c, fontSize: '11px'}));
+      }
+      if (r.id === 'art' || r.id === 'cvp' || r.id === 'co2') {
+        const sc = place(el('div', 'wlbl'), {left: (x + 46) + 'px', top: y + 'px', color: c, fontSize: '12px'}); sc.dataset.scale = r.id; box.appendChild(sc);
+        box.appendChild(place(el('div', 'wlbl', '0'), {left: (x + 46) + 'px', top: (G.head + r.y + r.h - 20) + 'px', color: c, fontSize: '12px'}));
+      }
+      const m = place(el('div', 'wmsg'), {left: (G.left + 320) + 'px', top: (G.head + r.y + r.h / 2 - 10) + 'px', color: c});
+      m.dataset.wmsg = r.id; box.appendChild(m);
+    }
+    updateScaleLabels();
+  };
+
+  /* ---------- numerics ---------- */
+  const NUM = {
+    hr: (w, h) => `<div class="lbl">HR<small>bpm</small><span class="belloff" data-bell="hr"></span></div><div class="lim" style="left:8px;top:26px" data-lim="hr"></div>
+      <div class="big" data-v="hr" style="right:14px;top:${Math.max(4, h * 0.1)}px;font-size:${Math.min(h * 0.66, w * 0.38, 118)}px"></div>
+      <div class="sub" style="left:8px;bottom:6px" data-v="pvc"></div><div class="sub" style="left:${w * 0.34}px;bottom:6px" data-v="st"></div>`,
+    spo2: (w, h) => `<div class="lbl">SpO<sub>2</sub><small>%</small><span class="belloff" data-bell="spo2"></span></div><div class="lim" style="left:8px;top:26px" data-lim="spo2"></div>
+      <div class="big" data-v="spo2" style="right:${w * 0.36}px;top:${Math.max(4, h * 0.1)}px;font-size:${Math.min(h * 0.62, w * 0.3, 104)}px"></div>
+      <div class="sub" style="right:12px;top:6px;text-align:right">Pulse</div>
+      <div class="big" data-v="pr" style="right:12px;top:${h * 0.34}px;font-size:${Math.min(h * 0.36, w * 0.15, 56)}px"></div>`,
+    art: (w, h) => `<div class="lbl">ABP<small>mmHg</small><span class="belloff" data-bell="art"></span></div><div class="lim" style="left:8px;top:26px" data-lim="art"></div>
+      <div class="big" data-v="artSD" style="right:14px;top:${h * 0.08}px;font-size:${Math.min(h * 0.44, w * 0.2, 64)}px"></div>
+      <div class="big" data-v="artM" style="right:14px;top:${h * 0.56}px;font-size:${Math.min(h * 0.3, w * 0.13, 42)}px"></div><div class="msg" data-msg="art"></div>`,
+    cvp: (w, h) => `<div class="lbl">CVP<small>mmHg</small><span class="belloff" data-bell="cvp"></span></div><div class="lim" style="left:8px;top:26px" data-lim="cvp"></div>
+      <div class="big" data-v="cvp" style="right:20px;top:${h * 0.1}px;font-size:${Math.min(h * 0.6, w * 0.25, 72)}px"></div>`,
+    co2: (w, h) => `<div class="lbl">etCO<sub>2</sub><small>mmHg</small><span class="belloff" data-bell="co2"></span></div><div class="lim" style="left:8px;top:26px" data-lim="co2"></div>
+      <div class="big" data-v="etco2" style="right:${w * 0.36}px;top:${h * 0.08}px;font-size:${Math.min(h * 0.56, w * 0.24, 80)}px"></div>
+      <div class="sub" style="right:12px;top:6px;text-align:right">awRR</div>
+      <div class="big" data-v="rr" style="right:12px;top:${h * 0.3}px;font-size:${Math.min(h * 0.34, w * 0.14, 50)}px"></div>
+      <div class="sub" style="left:8px;bottom:6px">imCO<sub>2</sub> <span data-v="fico2"></span></div>`,
+    resp: (w, h) => `<div class="lbl">Resp<small>rpm</small><span class="belloff" data-bell="resp"></span></div><div class="lim" style="left:8px;top:26px" data-lim="rr"></div>
+      <div class="big" data-v="rr" style="right:20px;top:${h * 0.1}px;font-size:${Math.min(h * 0.6, w * 0.25, 76)}px"></div>`,
+    nibp: (w, h) => `<div class="lbl">NBP<small>mmHg</small><span class="belloff" data-bell="nibp"></span></div><div class="lim" style="left:8px;top:26px" data-lim="nibp"></div>
+      <div class="sub" style="left:8px;bottom:6px;font-size:13px" data-v="nibpInfo"></div>
+      <div class="big" style="right:16px;top:${h * 0.12}px;font-size:${Math.min(h * 0.52, w * 0.16, 64)}px;white-space:nowrap"><span data-v="nibpSD"></span> <span data-v="nibpM" style="font-size:.62em"></span></div>
+      <div class="msg" data-msg="nibp" style="left:auto;right:16px;text-align:right"></div>`,
+    temp: (w, h) => `<div class="lbl">Temp<small data-v="tunit"></small><span class="belloff" data-bell="temp"></span></div><div class="lim" style="left:8px;top:26px" data-lim="t1"></div>
+      <div class="big" data-v="t1" style="right:16px;top:${h * 0.16}px;font-size:${Math.min(h * 0.55, w * 0.2, 60)}px"></div>`,
+  };
+  const ROWPAR = {ecg1: 'hr', art: 'art', cvp: 'cvp', spo2: 'spo2', co2: 'co2', resp: 'resp'};
+  const origParams = buildParams;
+  buildParams = function () {
+    if (!isPh()) { const br = $('#bottomRow'); br.style.display = ''; return origParams(); }
+    const box = $('#params'); box.innerHTML = ''; PW = {};
+    const br = $('#bottomRow'); br.innerHTML = ''; br.classList.remove('hc');
+    const mk = (parent, id, x, y, w, h, color) => {
+      const e = place(el('div', 'pw phn'), {left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', color: color});
+      e.style.setProperty('--pc', color); e.innerHTML = NUM[id](w, h);
+      e.onclick = id === 'nibp' ? () => openNibpMenu() : () => openAlarmsSetup();
+      parent.appendChild(e); PW[id] = {el: e, h: h}; return e;
+    };
+    const col = {hr: PHC.ecg, spo2: PHC.spo2, art: PHC.art, cvp: PHC.cvp, co2: PHC.co2, resp: PHC.resp, nibp: PHC.nibp, temp: PHC.temp};
+    if (S.display === 'mx100') {
+      // one column of numerics beside the waves: the waved ones, then NBP and Temp
+      const ids = rows.map(r => ROWPAR[r.id]).filter(Boolean); ids.push('nibp'); if (SEN.temp === 'ok') ids.push('temp');
+      const wt = {hr: 1.35, spo2: 1.1, nibp: 1.1}, tw = ids.reduce((a, k) => a + (wt[k] || 0.85), 0);
+      let y = 0;
+      for (const k of ids) { const h = Math.floor(WAVE_H * (wt[k] || 0.85) / tw); mk(box, k, 0, y, G.numW, h, col[k]); y += h; }
+      return;
+    }
+    // MX800: each numeric beside its wave (HR spans both ECG waves), NBP and Temp in the row under the waves
+    for (const r of rows) {
+      const id = ROWPAR[r.id]; if (!id) continue;
+      let h = r.h; if (r.id === 'ecg1') { const e2 = rows.find(q => q.id === 'ecg2'); if (e2) h = e2.y + e2.h - r.y; }
+      mk(box, id, 0, r.y, G.numW, h, col[id]);
+    }
+    const nw = Math.round(SW * 0.36);
+    mk(br, 'nibp', 0, 0, nw, G.numRow, col.nibp);
+    if (SEN.temp === 'ok') mk(br, 'temp', nw, 0, Math.round(SW * 0.2), G.numRow, col.temp);
+    PW.nibp.el.style.borderRight = '1px solid #2b3036';
+  };
+
+  /* ---------- alarm messages in IntelliVue wording ---------- */
+  const INOP = {leads: 'ECG Leads Off', vlead: 'V Lead Off', arrsusp: 'Cannot Analyze ECG', spo2off: 'SpO2 Sensor Off', spo2nop: 'SpO2 No Pulse',
+    spo2art: 'SpO2 Noisy Signal', artnz: 'ABP Zero+Check Cal', cvpnz: 'CVP Zero+Check Cal', nibperr: 'NBP Measure Failed', co2occl: 'CO2 Occlusion',
+    batlow: 'Battery Low'};
+  const ARR = {asys: 'Asystole', vfib: 'Vent Fib/Tach', vtach: 'VTach', xtachy: 'Extreme Tachy', xbrady: 'Extreme Brady', apnea: 'Apnea',
+    vt2: 'Run PVCs High', accv: 'Vent Rhythm', vbrady: 'Vent Brady', pause: 'Pause', ront: 'R-on-T PVCs', couplet: 'Pair PVCs',
+    bigem: 'Vent Bigeminy', trigem: 'Vent Trigeminy', pvc: 'PVCs/min High', afib: 'AFIB', irreg: 'Irregular HR'};
+  const LIMNAME = {'ART Sys': 'ABPs', 'ART Dia': 'ABPd', 'ART Mean': 'ABPm', 'NIBP Sys': 'NBPs', 'NIBP Dia': 'NBPd', 'NIBP Mean': 'NBPm',
+    CVP: 'CVPm', EtCO2: 'etCO2', FiCO2: 'imCO2', T1: 'Temp', SpO2: 'SpO2', HR: 'HR'};
+  const isInop = a => !!INOP[a.id];
+  function phText(a) {
+    const star = a.pri === 'high' ? '*** ' : a.pri === 'medium' ? '** ' : '* ';
+    if (isInop(a)) {
+      let t = INOP[a.id]; if (a.id === 'batlow' && /Critic/.test(a.msg)) t = 'Battery Empty';
+      return (a.pri === 'high' ? '!!! ' : a.pri === 'medium' ? '!! ' : '') + t;
+    }
+    if (a.id === 'spo2desat') return '*** Desat';
+    if (a.id === 'tachy' || a.id === 'brady') { const m = a.msg.match(/(\d+)\s*([<>])\s*(\d+)/); return star + (a.id === 'tachy' ? 'HR High' : 'HR Low') + (m ? ' ' + m[1] + m[2] + m[3] : ''); }
+    if (ARR[a.id]) return star + ARR[a.id];
+    // limit alarms: "SpO2 Low 87 < 90" -> "** SpO2 87<90"
+    const m = a.msg.match(/^(.*?) (High|Low) (-?[\d.]+) ([<>]) (-?[\d.]+)$/);
+    if (m) return star + (LIMNAME[m[1]] || m[1]) + ' ' + m[3] + m[4] + m[5];
+    return star + a.msg;
+  }
+  window.philipsAlarmText = phText;
+  const fieldCls = a => a.pri === 'high' ? 'r' : a.pri === 'medium' ? 'y' : isInop(a) ? 'c' : 'y';
+  function field(list, now) {
+    if (!list.length) return '<div class="af"></div>';
+    const i = Math.floor(now / 2000) % list.length, a = list[i];
+    return `<div class="af ${fieldCls(a)}">${a.acked ? '<span class="ck">&#10003;</span>' : ''}${esc(phText(a))}${list.length > 1 ? '<span class="ar">&#8680;</span>' : ''}</div>`;
+  }
+  const origTop = updateTop;
+  updateTop = function () {
+    origTop();
+    if (!isPh()) return;
+    const now = performance.now(), list = powered ? sortedAlarms().filter(a => a.pri !== 'info' && !a.latched) : [];
+    const pat = list.filter(a => !isInop(a)), inop = list.filter(isInop);
+    const d = new Date(), tm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    const paused = simT < pauseUntil && powered, r = Math.max(0, pauseUntil - simT), pz = Math.floor(r / 60) + ':' + pad2(Math.floor(r % 60));
+    const left = S.display === 'mx100'
+      ? `<div class="pi" style="width:170px"><b>${esc(S.bed)}</b><span>${esc(S.cat)}</span></div>`
+      : `<div class="pi" style="width:270px"><b>${esc(S.bed)} &nbsp;<span style="font-weight:400;font-size:14px">${esc(S.name || '')}</span></b><span>&#128100; ${esc(S.cat)} &nbsp; Paced: No</span></div>`;
+    const af = paused && !pat.length ? `<div class="af pz">${simT < pauseUntil && S.pauseTime >= 600 ? 'Alarms Off' : 'Al. Paused ' + pz}</div>` : field(pat, now);
+    const html = left + af + field(inop, now) +
+      `<div class="clk" style="width:${S.display === 'mx100' ? 120 : 190}px"><b>${tm}</b><span>${S.display === 'mx100' ? '&#128267; ' + Math.round(battery) + '%' : d.toLocaleDateString(undefined, {day: '2-digit', month: 'short', year: '2-digit'}) + ' &nbsp;Profile: ' + esc(S.cat)}</span></div>`;
+    if (phHdr.innerHTML !== html) phHdr.innerHTML = html;
+    const pis = phHdr.querySelector('.pi'); if (pis) pis.onclick = () => openPatientMenu();
+    phHdr.querySelectorAll('.af').forEach(e => e.onclick = () => openAlarmsSetup(3));
+    // status line: prompts and notices
+    const sm = infoMsg && infoMsg.until > simT ? infoMsg.msg : paused ? 'Alarms paused ' + pz : '';
+    if (phStatus.textContent !== sm) phStatus.textContent = sm;
+    // the MX100's Acknowledge key turns yellow while alarms are active
+    const ak = phKeys.querySelector('.ack');
+    if (ak) { ak.classList.toggle('al', list.some(a => !a.acked)); ak.classList.toggle('pz', paused); }
+    const mp = $('#mkPhPause'); if (mp) mp.classList.toggle('paused', paused);
+    const ms = $('#mkPause'); if (ms) { ms.classList.remove('paused'); const c = ms.querySelector('.cnt'); if (c) c.textContent = ''; }
+  };
+  // wave messages in IntelliVue wording
+  const origUpd = updateParams;
+  updateParams = function () {
+    origUpd();
+    if (!isPh()) return;
+    const W = {'Leads Fail': 'ECG Leads Off', 'V Lead Fail': 'V Lead Off', 'Probe Off': 'SpO2 Sensor Off', 'Not Zeroed': 'Zero+Check Cal', 'Occlusion': 'CO2 Occlusion'};
+    document.querySelectorAll('[data-wmsg]').forEach(e => { const n = W[e.textContent]; if (n) e.textContent = n; });
+    document.querySelectorAll('.philips [data-msg]').forEach(e => { if (/^(NIBP|NBP)/.test(e.textContent)) e.textContent = ''; });
+  };
+
+  /* ---------- the alarm lamp (right half patient alarms, left half INOPs) and flashing numerics ---------- */
+  const origLight = updateAlarmLight;
+  updateAlarmLight = function (now) {
+    if (!isPh()) { scr.classList.remove('phoff'); $('#alarmLight').style.background = ''; return origLight(now); }
+    scr.classList.toggle('phoff', (now % 1000) >= 500);
+    const L = $('#alarmLight');
+    let pp = 0, ip = 0;
+    if (powered && !standby) for (const id in alarms) { const a = alarms[id]; if (a.pri === 'info') continue; if (isInop(a)) ip = Math.max(ip, PRI[a.pri]); else pp = Math.max(pp, PRI[a.pri]); }
+    const pc = pp === 3 ? ((now % 500) < 250 ? '#ff2020' : '#121418') : pp >= 1 ? ((now % 1600) < 800 ? '#ffd000' : '#121418') : '#121418';
+    const ic = ip === 3 ? ((now % 500) < 250 ? '#ff2020' : '#121418') : ip === 2 ? ((now % 2000) < 1000 ? '#ffd000' : '#121418') : ip === 1 ? '#18d8ff' : '#121418';
+    const bg = `linear-gradient(90deg,${ic} 0 49.5%,#000 49.5% 50.5%,${pc} 50.5% 100%)`;
+    if (L.className) L.className = '';
+    if (L.style.background !== bg) L.style.background = bg;
+  };
+
+  /* ---------- keys ---------- */
+  function phSilence() {
+    // Silence acknowledges every active alarm: the sound stops, the message stays with a check mark until the cause is gone
+    if (!powered || standby) return;
+    ensureAudio();
+    for (const id in alarms) { const a = alarms[id]; a.acked = true; if (a.latched) delete alarms[id]; }
+    if (NB.last) NB.last.ack = true; if (NB.err) NB.err.ack = true;
+  }
+  const origAudible = audibleAlarms;
+  audibleAlarms = function () { const l = origAudible(); return isPh() ? l.filter(a => !a.acked) : l; };
+  const SMART = [
+    ['Alarm Limits', () => openAlarmsSetup()], ['Alarm Volume', () => openMonitorSetup(4)], ['QRS Volume', () => openMonitorSetup(4)],
+    ['Start/ Stop NBP', nibpStart], ['NBP STAT', () => { NB.statUntil = NB.statUntil > simT ? 0 : simT + 300; if (NB.statUntil && NB.state === 'idle') nibpStart(); toast(NB.statUntil ? 'NBP STAT started' : 'NBP STAT stopped'); }],
+    ['Repeat Time', () => openNibpMenu()], ['Zero', zeroAll], ['Freeze Waves', toggleFreeze], ['Vital Signs', () => openDataMenu(0)],
+    ['Graph Trends', () => openDataMenu(1)], ['Profiles', () => openProfiles()], ['Patient Demogr', () => openPatientMenu()], ['Monitor Standby', () => setStandby(true)],
+  ];
+  const BELL = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg>';
+  const origBar = buildMenuBar;
+  buildMenuBar = function () {
+    const bar = $('#menubar');
+    if (!isPh()) { bar.style.display = ''; return origBar(); }
+    bar.innerHTML = '';
+    const key = (id, html, fn, cls) => { const k = el('div', 'mk' + (cls ? ' ' + cls : ''), html); if (id) k.id = id; k.onclick = () => { ensureAudio(); fn(); }; bar.appendChild(k); return k; };
+    key('mkPause', '<span class="ic">&#10006;</span><span>Silence</span><span class="cnt"></span>', phSilence, 'pk sil');
+    key('mkPhPause', '<span>Pause<br>Alarms</span>', pauseAudio, 'pk');
+    const n = SW >= 1500 ? 10 : SW >= 1200 ? 8 : 6;
+    for (const [lab, fn] of SMART.slice(0, n)) key(null, '<span>' + lab.replace(' ', '<br>') + '</span>', fn);
+    key(null, '<span>Main<br>Setup</span>', () => openMonitorSetup(), 'pk');
+    key(null, '<span>Main<br>Screen</span>', () => { closeMenu(); phSmart.classList.remove('on'); }, 'pk');
+  };
+  function buildPhKeys() {
+    phKeys.innerHTML = '';
+    if (S.display !== 'mx100') return;
+    const ack = el('div', 'ack', BELL + '<span>Acknowledge</span>'), scrK = el('div', '', '<span>&#9635;</span><span>Screen</span>'), keys = el('div', '', '<span>&#9638;</span><span>Keys</span>');
+    // touch = acknowledge; hold for a second = pause alarms
+    let hold = 0;
+    ack.onpointerdown = () => { ensureAudio(); hold = setTimeout(() => { hold = 0; pauseAudio(); }, 900); };
+    ack.onpointerup = ack.onpointerleave = e => { if (hold) { clearTimeout(hold); hold = 0; if (e.type === 'pointerup') phSilence(); } };
+    scrK.onclick = () => { closeMenu(); phSmart.classList.remove('on'); };
+    keys.onclick = () => {
+      if (phSmart.classList.toggle('on')) {
+        phSmart.innerHTML = '';
+        for (const [lab, fn] of SMART.concat([['Main Setup', () => openMonitorSetup()]])) { const k = el('div', '', lab); k.onclick = () => { phSmart.classList.remove('on'); ensureAudio(); fn(); }; phSmart.appendChild(k); }
+        Object.assign(phSmart.style, {left: (G.left + 16) + 'px', top: (G.head + 16) + 'px', right: '16px'});
+      }
+    };
+    phKeys.append(ack, scrK, keys);
+  }
+
+  /* ---------- alarm sounds ----------
+     Philips does not publish the frequencies of its tones; the patterns are from the Instructions for Use and the pitches
+     are chosen to match their descriptions (red = high pitch, yellow = lower pitch).
+     Traditional: red = a high-pitched sound once a second; yellow = a lower-pitched sound every 2 s; INOP tone every 2 s.
+     ISO/IEC: red = 5 high tones (3 + 2) then a 10 s pause; yellow = 3 lower tones then 20 s; INOP = 2 lower tones. */
+  TONESETS.phTrad = {
+    high:   {notes: [[0, 960, .3, false, .55]], repeat: 1.0},
+    medium: {notes: [[0, 480, .35, false, .6]], repeat: 2.0},
+    low:    {notes: [[0, 480, .18, false, .6]], repeat: 2.0},
+  };
+  const pulses = (f, ts, d) => ts.map(t => [t, f, d, true, .5]);
+  TONESETS.phIec = {
+    high:   {notes: pulses(880, [0, .22, .44, .9, 1.12], .16), repeat: 11.3},
+    medium: {notes: pulses(660, [0, .25, .5], .2), repeat: 20.7},
+    low:    {notes: pulses(520, [0, .3], .2), repeat: 20.5},
+  };
+  // GE CARESCAPE tones from the CARESCAPE manual (alarm tone tables): "Legacy" medium = two 100 ms beeps of 397 + 441 Hz
+  // then 2.4 s quiet; low = one 500 ms 397 Hz beep every 5.5 s (the high, 3 x 500 + 510 Hz, was measured from a real B450
+  // and is kept). "IEC" (the CARESCAPE default) high = C-F-G, A-B (100 ms each), twice, then 5 s; medium C-G-B; low C.
+  TONESETS.carescape.medium = {notes: [[0, 397, .1, 'ge500', .3], [0, 441, .1, 'ge512', .3], [.2, 397, .1, 'ge500', .3], [.2, 441, .1, 'ge512', .3]], repeat: 2.7};
+  TONESETS.carescape.low = {notes: [[0, 397, .5, 'ge500', .32]], repeat: 5.5};
+  const geHi = t => [[t, 523, .1], [t + .2, 698, .1], [t + .4, 784, .1], [t + .9, 880, .1], [t + 1.1, 988, .1]].map(n => n.concat([true, .5]));
+  TONESETS.geIec = {
+    high:   {notes: geHi(0).concat(geHi(2.2)), repeat: 8.4},
+    medium: {notes: [[0, 523, .2, true, .5], [.3, 784, .2, true, .5], [.6, 988, .2, true, .5]], repeat: 20},
+    low:    {notes: [[0, 523, .2, true, .5]], repeat: 25},
+  };
+  // the heartbeat tone: GE's pitch steps 10 Hz per % of SpO2 (920 Hz at 100 %, 220 Hz at 30 %), 40 ms "soft" beep;
+  // Philips' tone modulation also drops the pitch as SpO2 falls
+  const origQrs = qrsBeep;
+  qrsBeep = function (b) {
+    if (S.toneSet === 'classic' || !AC || !S.volQrs || standby || !powered) return origQrs(b);
+    const s = clamp(M.spo2 != null ? M.spo2 : 100, 30, 100);
+    if (S.display === 'carescape') return tone(920 - (100 - s) * 10, AC.currentTime + 0.005, 0.04, qrsGain, false);
+    if (isPh()) return tone(840 * Math.pow(2, (s - 100) / 30), AC.currentTime + 0.005, 0.07, qrsGain, false);
+    return origQrs(b);
+  };
+
+  // a monitor saved from last time (resume after an update, ?autostart) is drawn with its own screen at once
+  if (isPh() || (S.sizeMode || 'fill') !== 'fill') { fit(); layout(); }
+  const CREDITS = `
+<div style="line-height:1.55;font-size:13.5px;color:#d7e0ea">
+<p style="margin:0 0 10px;font-size:15px;color:#fff"><b>Credits</b></p>
+<p style="margin:0 0 10px">This simulator copies the look, layout and alarm sounds of real patient monitors so that students, nurses, film-makers and hobbyists can practise and stage scenes without a real device. All credit for the monitors, their screen designs and their alarm sounds belongs to the companies that designed them:</p>
+<p style="margin:0 0 8px"><b style="color:#fff">GE HealthCare</b> &mdash; the <b>CARESCAPE&trade; B450</b> patient monitor, its screen layout, parameter colours, menus and alarm tones, and the GE Dash-style screen the Default Monitor is based on. CARESCAPE is a trademark of GE HealthCare Technologies Inc.</p>
+<p style="margin:0 0 8px"><b style="color:#fff">Philips</b> &mdash; the <b>IntelliVue MX800</b> and <b>IntelliVue MX100</b> patient monitors, their screens, SmartKeys, alarm messages, and the Philips Traditional alarm tones. Philips and IntelliVue are trademarks of Koninklijke Philips N.V.</p>
+<p style="margin:0 0 8px"><b style="color:#fff">IEC</b> &mdash; the alarm melodies and timing of <b>IEC 60601-1-8</b> (alarm systems in medical electrical equipment) and the earlier ISO/IEC 9703-2 alarm signals, used for the "ISO / IEC" and "IEC 60601-1-8" sound options.</p>
+<p style="margin:0 0 8px"><b style="color:#fff">House M.D.</b> &mdash; the Default Monitor's screen and alarm sounds are modelled on the patient monitor seen in the television series <i>House M.D.</i> (Universal Television, Heel &amp; Toe Films, Shore Z Productions and Bad Hat Harry Productions; broadcast by FOX). All rights to the series belong to their owners.</p>
+<p style="margin:0 0 8px"><b style="color:#fff">The heart rhythms, scenarios and physiology</b> follow published clinical teaching material (AHA ACLS / PALS algorithms and standard ECG and critical-care texts).</p>
+<p style="margin:12px 0 0;color:#9fb3c8">Simulator by D.M. This is an independent, unofficial training and entertainment simulation. It is not a medical device, does not measure anything and must never be used to monitor a real patient. It is not affiliated with, endorsed or sponsored by GE HealthCare, Philips, the IEC, Universal Television or FOX. Product names are used only to say which real monitor each screen resembles.</p>
+</div>`;
+})();
+</script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
 </body>
 </html>
