@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<script>try{localStorage.removeItem("hm.update.html");localStorage.removeItem("hm.update.build")}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-192.png"><meta name="theme-color" content="#000000">
 <link rel="icon" type="image/png" href="icon-192.png">
 <meta charset="utf-8">
@@ -8,13 +9,15 @@
 /* Build stamp, raised with every published change. "Check for updates" (Instructor panel) keeps a newer copy of the
    monitor in this browser; when this file starts and that copy is newer than itself, the rest of this file is
    swallowed unread and the newer copy runs in its place. A newer file (e.g. a fresh ZIP) wins over an older copy. */
-var HM_BUILD = '2026-11-01.3';
+var HM_BUILD = '2026-11-01.4';
+// builds compare by date, then by the number after the dot (so .10 is newer than .9; a plain text compare gets that wrong)
+function hmBuildNewer(a, b) { var x = String(a).split('.'), y = String(b).split('.'); return x[0] !== y[0] ? x[0] > y[0] : (+x[1] || 0) > (+y[1] || 0); }
 (function () {
   try {
     if (window.__hmSwapped) return;
     var b = localStorage.getItem('hm.update.build');
     if (!b) return;
-    if (b <= HM_BUILD) { localStorage.removeItem('hm.update.build'); localStorage.removeItem('hm.update.html'); return; }
+    if (!hmBuildNewer(b, HM_BUILD)) { localStorage.removeItem('hm.update.build'); localStorage.removeItem('hm.update.html'); return; }
     var html = localStorage.getItem('hm.update.html');
     if (!html || html.indexOf('function powerOn') < 0) return;
     window.__hmSwapped = true;
@@ -527,7 +530,11 @@ function defaultSettings(cat = 'Adult') {
 }
 let S = defaultSettings();
 try { const saved = JSON.parse(localStorage.getItem('b450sim.settings') || 'null');
-  if (saved && saved.lim && saved.arr) S = Object.assign(defaultSettings(saved.cat || 'Adult'), saved); } catch (e) {}
+  if (saved && saved.lim && saved.arr) { const d = defaultSettings(saved.cat || 'Adult');
+    // limits, arrhythmia alarms and colours merge one level down, so a limit or alarm added in a later build still
+    // gets its default instead of being missing (which would stop the alarm engine)
+    for (const k of ['lim', 'arr', 'colors']) if (saved[k] && d[k]) saved[k] = Object.assign({}, d[k], saved[k]);
+    S = Object.assign(d, saved); } } catch (e) {}
 // settings saved by older versions latched the lethal alarms with no way to change it
 for (const id of ['asys', 'vfib', 'vtach', 'xtachy', 'xbrady']) if (S.arr[id] && !S.latchSet) S.arr[id].latch = false;
 // the real frame is around the TV: no drawn housing unless it was switched on in Monitor Setup after this change
@@ -739,7 +746,8 @@ function scheduleBreaths(until) {
     breaths.push({t: breathT, per: per, ti: Math.min(per * (talk ? 0.2 : 0.36), talk ? 0.7 : 1.6), et: P.etco2 > 5 ? P.etco2 + rnd(-0.6, 0.6) : P.etco2, depth: rnd(0.9, 1.1)});
     breathT += per;
   }
-  const cut = simT - 30; let i = 0; while (i < breaths.length && breaths[i].t < cut) i++; if (i) breaths.splice(0, i);
+  // (the latest breath is always kept: the Apnea alarm is timed from it, and with no breath on record it would clear)
+  const cut = simT - 30; let i = 0; while (i < breaths.length - 1 && breaths[i].t < cut) i++; if (i) breaths.splice(0, i);
 }
 
 /* ---------------- patient activity: motion and interference artifact ---------------- */
@@ -1422,7 +1430,9 @@ function evalAlarms() {
   // --- Respiration / CO2 ---
   // the House screen shows no respiration, so it raises no RR/apnea alarms: an alarm always points at a number on screen
   const respShown = !houseClassic();
-  if (respShown && S.apnea.on && M.rr === 0 && (SEN.co2 === 'ok' || SEN.ecg === 'ok')) {
+  // timed from the last breath itself, not from the RR reading dropping to 0 (that takes up to three breath intervals,
+  // so after slow breathing the alarm came 45-60 s late)
+  if (respShown && S.apnea.on && (SEN.co2 === 'ok' || SEN.ecg === 'ok')) {
     const lb = lastBreath(t);
     if (lb && t - lb.t > S.apnea.time) want('apnea', 'high', 'Apnea', {param: SEN.co2 === 'ok' ? 'co2' : 'resp'});
   }
@@ -1690,7 +1700,7 @@ const TONESETS = {
   },
 };
 function playPattern(pat, t0) { for (const [off, f, d, w, lv, att, env] of pat.notes) tone(f, t0 + off, d, alarmGain, w || pat.wave || true, lv, att, env); }
-let audioPri = 0, audioName = null, nextBurst = 0, nextLayer = 0, nextOx = 0, oxOn = false, flatOsc = null;
+let audioPri = 0, audioName = null, nextBurst = 0, nextLayer = 0, nextOx = 0, oxOn = false, flatOsc = null, flatTestUntil = 0;
 const OX_IDS = new Set(['spo2Lo', 'spo2Hi', 'spo2nop', 'spo2off', 'spo2art', 'spo2desat']);
 function setFlatline(on) {
   // TV-drama style continuous flatline tone (real monitors use the normal high-priority pattern instead)
@@ -1706,8 +1716,10 @@ function audioTick() {
   if (!AC) return;
   const list = (powered && !standby) ? audibleAlarms() : [];
   // alarm test of one half of the asystole sound: the flatline alone or the three-beep alone
-  const solo = alarmTest === 'flatonly' || alarmTest === 'beronly' ? alarmTest : null;
-  const flat = solo ? solo === 'flatonly' : S.tvFlatline && list.some(a => a.id === 'asys' && !a.latched);
+  // (never in standby: the screen says alarms are suspended)
+  const solo = powered && !standby && (alarmTest === 'flatonly' || alarmTest === 'beronly') ? alarmTest : null;
+  // flatTestUntil: the Sound setup's "Asystole (flatline)" button, which plays the tone for a few seconds
+  const flat = solo ? solo === 'flatonly' : (S.tvFlatline && list.some(a => a.id === 'asys' && !a.latched)) || AC.currentTime < flatTestUntil;
   setFlatline(flat);
   const set = TONESETS[S.toneSet] || TONESETS.carescape;
   // TV mode: pulse-ox alarms sound on their own channel, alongside the ECG alarm sound
@@ -2485,7 +2497,7 @@ function openAlarmsSetup(idx = 0) {
       row(b, 'Audio pause time', choice([[60,'1 min'],[120,'2 min'],[180,'3 min'],[300,'5 min']], () => S.pauseTime, v => S.pauseTime = +v));
       row(b, 'Alarm tones', choice([['carescape','CARESCAPE (default)'],['iec','IEC 60601-1-8 general'],['classic','GE legacy / TV (House MD style)']], () => S.toneSet, v => S.toneSet = v),
         button('High', () => testAlarm('high')), button('Medium', () => testAlarm('medium')), button('Low', () => testAlarm('low')));
-      if (S.toneSet === 'classic') row(b, 'TV crisis sounds', button('Asystole (flatline)', () => { ensureAudio(); setFlatline(true); setTimeout(() => setFlatline(false), 3400); }),
+      if (S.toneSet === 'classic') row(b, 'TV crisis sounds', button('Asystole (flatline)', () => { ensureAudio(); if (!AC) return; flatTestUntil = AC.currentTime + 3.4; setFlatline(true); setTimeout(() => { if (!powered) setFlatline(false); }, 3400); }),
         button('V-tach (fast + beep beep)', () => { const c = TONESETS.classic, t0 = AC.currentTime + 0.05;
           for (let i = 0; i < 28; i++) playPattern(c.high, t0 + i * c.high.repeat); for (let i = 0; i < 5; i++) playPattern(c.pair, t0 + 0.4 + i * c.pair.repeat); }),
         button('Beep beep', () => testAlarm('medium')),
@@ -2528,7 +2540,8 @@ function openMonitorSetup(tab = 0) {
   openMenu('Monitor Setup', [
     {name: 'Screen Setup', build: b => {
       row(b, 'Sweep speed', choice([[12.5,'12.5 mm/s'],[25,'25 mm/s'],[50,'50 mm/s']], () => S.sweep, v => { S.sweep = +v; layout(); }));
-      row(b, 'Second ECG waveform', toggle(() => S.showEcg2, v => { S.showEcg2 = v; layout(); }));
+      // (the House set screen has one ECG only, so the switch is offered on the CARESCAPE screens only)
+  if (!isHouse()) row(b, 'Second ECG waveform', toggle(() => S.showEcg2, v => { S.showEcg2 = v; layout(); }));
       row(b, 'Brightness', stepper(() => S.brightness, v => { S.brightness = v; applyBrightness(); }, 20, 100, 10, v => v + '%'));
       row(b, 'Screen style', choice([['carescape', 'CARESCAPE B450'], ['house', 'House M.D. set monitor']], () => S.display, v => { S.display = v; layout(); }));
       row(b, 'Show monitor housing', toggle(() => S.bezel, v => { S.bezel = v; S.bezelSet = true; save(); fit(); }));
@@ -2694,7 +2707,7 @@ function buildInstructor() {
    <div class="hint" id="crsState">Not running</div>
    <h3>Build your own timeline</h3>
    <div class="hint">Each row starts at its time (m:ss) and the patient drifts to its numbers by the next row; a blank box keeps the number. Tick Seizure for a seizure (it ends at the first row without the tick).</div>
-   <div class="ir"><label>Name</label><input id="tlName" class="inp" style="flex:1" value="${tlName0()}"><select id="tlLoad" style="flex:1"></select></div>
+   <div class="ir"><label>Name</label><input id="tlName" class="inp" style="flex:1;min-width:0" value="${tlName0()}"><select id="tlLoad" style="flex:1;min-width:0"></select></div>
    <div id="tlRows"></div>
    <div class="ir"><div class="seg"><button class="sb" id="tlAdd">+ Row</button><button class="sb" id="tlSave">Save</button><button class="sb" id="tlRun">&#9654; Run</button><button class="sb" id="tlDel">Delete</button></div></div>
    <div class="hint" id="tlState"></div>
@@ -2871,11 +2884,11 @@ async function checkUpdate() {
       const t = await r.text(), m = t.match(/var HM_BUILD = '([^']+)'/);
       // only a complete monitor page counts: never replace a working monitor with an error page or half a file
       if (!m || t.length < 100000 || t.indexOf('function powerOn') < 0 || t.indexOf('TONESETS') < 0 || !/<\/html>\s*$/.test(t)) continue;
-      if (!best || m[1] > best.b) best = {b: m[1], t: t};
+      if (!best || hmBuildNewer(m[1], best.b)) best = {b: m[1], t: t};
     } catch (e) {}
   }
   if (!best) return updState('Could not reach the update server (no internet?). Running build ' + HM_BUILD + '.');
-  if (best.b <= HM_BUILD) return updState('Up to date (build ' + HM_BUILD + ').');
+  if (!hmBuildNewer(best.b, HM_BUILD)) return updState('Up to date (build ' + HM_BUILD + ').');
   try { localStorage.setItem('hm.update.html', best.t); localStorage.setItem('hm.update.build', best.b); }
   catch (e) { return updState('Could not store the update: ' + e.message); }
   try { sessionStorage.setItem('hm.resume', powered ? '1' : ''); } catch (e) {}
@@ -3232,17 +3245,30 @@ function powerOn() {
   const log = $('#bootLog'); log.innerHTML = '';
   // prop: the screen stays black for about a second, then the monitor comes up (no start-up text)
   setTimeout(() => {
+    // the clock starts again from 0, so everything stamped with the old session's clock is reset or moved back with it
+    // (otherwise a second power-on inherits a silence that lasts as long as the last session, frozen pressure numbers,
+    // stalled ramps and scenarios, a phantom shock, and a false Extreme Brady from the old heart rate)
+    const old = simT;
+    for (const k in RAMP) RAMP[k].t0 -= old;
+    if (CRS.name) CRS.t0 -= old;
+    pauseUntil = 0; pauseStart = -1; shockT = -99; lastTrend = -99; lastSample = 0; zeroingUntil = 0; infoMsg = null;
+    artBuf.length = cvpBuf.length = co2Buf.length = 0;
+    NB.statUntil = 0; NB.lastEnd = 0;
+    for (const k in M) M[k] = k === 'pvc' ? 0 : null;
     $('#boot').classList.remove('on'); powered = true; simT = 0; lastFrame = performance.now();
     schedT = 0.6; lastQRS = 0; breathT = 0.4; beats = []; breaths = []; alarms = {}; pending = {}; events = {}; hrResetT = -1;
     actEv = []; ghosts = []; actUntil = 0; actBoost = {hr: 0, rr: 0, t: 0}; lastGhostBeep = -9;
     if (isHouse() && !S.nibpAuto && !S.artLine) S.nibpAuto = 15;   // the set monitor ran NBP on Auto 15 min (no A-line)
     NB.state = 'idle'; NB.last = null; NB.err = null; NB.nextAuto = S.nibpAuto ? 3 : null;   // first reading right after power-on
-    if (isHouse()) { SEN.cvp = SEN.co2 = SEN.temp = 'none'; SEN.art = S.artLine ? 'ok' : 'none'; if (!S.limTouched) { S.lim.hr.lo = 60; S.lim.hr.hi = 120; } syncInstr(); }   // the House set monitor: ECG II, Pleth, NBP; HR limits 120/60
+    if (isHouse()) { SEN.cvp = SEN.co2 = SEN.temp = 'none'; SEN.art = S.artLine ? 'ok' : 'none'; { const d = defaultSettings('Adult').lim.hr; if (S.cat === 'Adult' && S.lim.hr.lo === d.lo && S.lim.hr.hi === d.hi) { S.lim.hr.lo = 60; S.lim.hr.hi = 120; } }   /* only untouched adult limits: a child's, a profile's or the user's own stay */ syncInstr(); }   // the House set monitor: ECG II, Pleth, NBP; HR limits 120/60
     layout();
   }, 1200);
 }
 function powerOff() {
   powered = false; standby = false; $('#standby').classList.remove('on');
+  // the alarm sound loop stops with the power, so the continuous flatline tone has to be stopped here
+  if (AC) setFlatline(false);
+  alarms = {}; pending = {};
   $('#off').classList.add('on'); $('#bootBar').style.width = '0'; $('#pwrBtn').classList.remove('on');
   $('#alarmLight').className = ''; closeMenu();
 }
@@ -3364,7 +3390,8 @@ if (new URLSearchParams(location.search).has('autostart')) powerOn();
 // restarted by Check for updates while the monitor was on: switch it straight back on
 try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeItem('hm.resume'); powerOn(); } else sessionStorage.removeItem('hm.resume'); } catch (e) {}
 </script>
-<style>#instr{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b5675 #121820}</style><script>canPopOut=function(){ return false }; try{ setInstrMode() }catch(e){}</script>
+<style>#instr{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b5675 #121820}</style><script>canPopOut=function(){ return false }; try{ setInstrMode() }catch(e){}
+checkUpdate=function(){ updState("The website updates itself: reload the page for the newest version (build "+HM_BUILD+").") }; try{ buildInstructor(); setInstrMode() }catch(e){}</script>
 <script>/* WEBSITE ONLY (added by deploy.js): more deteriorations for the Instructor's list, in the House Monitor's own
    format. Each one runs, alarms and shows on the timeline exactly like the built-in ones. Numbers follow the usual
    textbook course of each emergency (adult). */
@@ -3579,10 +3606,10 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
       {at: 92, say: 'Sinus rhythm', rhythm: 'nsr', ramp: 20, v: {hr: 92, sys: 106, dia: 66, st: 0}},
       {at: 180, say: 'Stable in sinus', v: {hr: 82, sys: 116, dia: 72, rr: 16, spo2: 97}}],
     'Torsades → shock + magnesium → sinus': [
-      {at: 0, say: 'Long QT, R-on-T PVCs', ramp: 3, rhythm: 'sbrady', ectopy: 'ront', v: {hr: 52, spo2: 96, sys: 110, dia: 70, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
-      {at: 40, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
+      {at: 0, say: 'Long QT, R-on-T PVCs', ramp: 3, rhythm: 'sbrady', ectopy: 'ront', qtx: 1.5, v: {hr: 52, spo2: 96, sys: 110, dia: 70, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
+      {at: 40, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, poly: true, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
       CPR(50, 'CPR, pads on'), CHECK(110, 'Rhythm check: torsades'), {at: 114, say: 'Shock (unsynchronized)', shock: true},
-      {at: 116, say: 'Sinus brady, magnesium 2 g', rhythm: 'sbrady', vtPulse: true, activity: null, now: {hr: 56}, ramp: 10, v: {sys: 92, dia: 56, etco2: 38, rr: 12, spo2: 92}},
+      {at: 116, say: 'Sinus brady, magnesium 2 g', rhythm: 'sbrady', vtPulse: true, poly: false, activity: null, now: {hr: 56}, ramp: 10, v: {sys: 92, dia: 56, etco2: 38, rr: 12, spo2: 92}},
       {at: 200, say: 'Overdrive pacing at 90', rhythm: 'paced', v: {hr: 90, sys: 112, dia: 70, spo2: 96}}],
     'Symptomatic brady → atropine → pacing': [
       {at: 0, say: 'Dizzy, HR 38', ramp: 3, rhythm: 'sbrady', ectopy: 'none', v: {hr: 38, spo2: 95, sys: 78, dia: 48, cvp: 7, rr: 18, etco2: 36, temp: 36.8, st: 0}},
@@ -3800,11 +3827,16 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
 
   /* every step with the whole state the patient is in from then on (numbers and flags carry over) */
   function states(steps) {
-    let v = {}, rh = '', ect = 'none', pl = false, vtp = true, coarse = true, scene = null, act = null;
+    let v = {}, rh = '', ect = 'none', pl = false, vtp = true, coarse = true, scene = null, act = null, art = false;
+    const morph = {qtx: 1, qrsx: 1, tx: 1, paradox: 0, vtPoly: false};
     return steps.map(s => { if (s.v) Object.assign(v, s.v); if (s.now) Object.assign(v, s.now); if (s.rhythm) rh = s.rhythm; if (s.ectopy) ect = s.ectopy;
       if ('pulseless' in s) pl = !!s.pulseless; if ('vtPulse' in s) vtp = !!s.vtPulse; if ('coarse' in s) coarse = !!s.coarse; if ('scene' in s) scene = s.scene || null;
       if ('activity' in s) act = s.activity || null;
-      return {at: s.at, say: s.say || '', rhythm: rh, ectopy: ect, pulseless: pl, vtPulse: vtp, coarse, scene, activity: act,
+      /* the ECG shape changes (QT, QRS width, peaked T, pulsus paradoxus, torsades) and the old movement artifact */
+      for (const k of ['qtx', 'qrsx', 'tx', 'paradox']) if (k in s) morph[k] = s[k];
+      if ('poly' in s) morph.vtPoly = !!s.poly;
+      if ('scene' in s) art = s.scene === 'seizure'; if ('artifact' in s) art = !!s.artifact;
+      return {at: s.at, say: s.say || '', rhythm: rh, ectopy: ect, pulseless: pl, vtPulse: vtp, coarse, scene, activity: act, morph: Object.assign({}, morph), artifact: art,
         noPulse: pl || (rh === 'vt' && !vtp) || rh === 'pea' || rh === 'vf' || rh === 'asys', v: Object.assign({}, v)}; });
   }
   const span = st => { const last = st[st.length - 1].at; return last + Math.max(45, last * 0.1) };
@@ -3822,7 +3854,7 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     el = Math.max(0, Math.min(span(st) - 0.01, el));
     const p = at(st, el), s = p.s;
     CRS.t0 = simT - el / CRS.speed; CRS.i = p.i + 1; CRS.say = s.say;
-    R.ectopy = s.ectopy; R.pulseless = s.pulseless; R.vtPulse = s.vtPulse; R.vfCoarse = s.coarse; R.scene = s.scene; R.artifact = s.scene === 'seizure';
+    R.ectopy = s.ectopy; R.pulseless = s.pulseless; R.vtPulse = s.vtPulse; R.vfCoarse = s.coarse; R.scene = s.scene; R.artifact = s.artifact; Object.assign(R, s.morph);
     if (typeof setActivity === 'function') setActivity(s.activity);
     if (s.rhythm && s.rhythm !== R.rhythm) setRhythm(s.rhythm, true);
     /* the numbers: straight to where they are at this moment, then on towards the next step on its own timing */
@@ -3835,7 +3867,9 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     const knob = drag ? drag.el : el, p = at(st, Math.max(0, knob)), here = knob >= 0;
     const segs = []; st.forEach((q, i) => { const k = q.rhythm + '|' + q.noPulse; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, at: q.at}) });
     segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
-    const label = g => g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' : (SH[g.rhythm] || rhName(g.rhythm));
+    /* an organized rhythm with no pulse is PEA, whatever it looks like (sinus tach at a rhythm check before ROSC) */
+    const label = g => g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
+      g.noPulse && !/^(vf|asys|pea)$/.test(g.rhythm) ? 'PEA' : (SH[g.rhythm] || rhName(g.rhythm));
     /* blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
     const fill = g => g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
     const two = segs.some(g => X(g.to) - X(g.at) < 52);
@@ -3851,7 +3885,7 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
     const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${rate ? '---' : n('hr', '--')}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${q.noPulse ? '--' : n('spo2', '--')}</b></span>` +
       `<span><i>NBP</i><b style="color:${C.bp}">${q.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
     const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
-    box.innerHTML = `<div class="tv-h">${esc(name)}<span>${drag ? 'let go to go here · ' : ''}${here ? fmtMS(knob) + ' / ' + fmtMS(end) : 'drag the knob or click the bar'}</span></div>` + s + num + sub;
+    box.innerHTML = `<div class="tv-h">${esc(name)}<span>${drag ? 'let go to go here · ' : ''}${here ? fmtMS(knob) + ' / ' + fmtMS(st[st.length - 1].at) + (CRS.speed !== 1 ? ' scenario time · ' + CRS.speed + '× speed' : '') : 'drag the knob or click the bar'}</span></div>` + s + num + sub;
     /* drag or click: the window follows the pointer even when it leaves the bar (the bar is redrawn as it moves) */
     const elOf = ev => { const sv = box.querySelector('svg'), r = sv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W; return Math.max(0, Math.min(end, (x - L) / (W - L - Rr) * end)); };
     box.querySelector('svg').onpointerdown = ev => { ev.preventDefault(); drag = {name, el: elOf(ev)}; draw(box, name, steps, el);
