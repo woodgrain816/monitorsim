@@ -3968,13 +3968,13 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   function draw(box, name, steps, el) {
     const st = states(steps), end = span(st), X = t => L + (W - L - Rr) * Math.min(1, Math.max(0, t / end));
     const knob = drag ? drag.el : el, p = at(st, Math.max(0, knob)), here = knob >= 0;
-    const segs = []; st.forEach((q, i) => { const k = q.rhythm + '|' + q.noPulse + '|' + (q.scene === 'seizure'); const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, seize: q.scene === 'seizure', at: q.at}) });
+    const segs = []; st.forEach((q, i) => { const cpr = q.activity === 'cpr', apnea = !q.noPulse && q.v.rr === 0; const k = q.rhythm + '|' + q.noPulse + '|' + (q.scene === 'seizure') + '|' + cpr + '|' + apnea; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, seize: q.scene === 'seizure', cpr, apnea, at: q.at}) });
     segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
     /* an organized rhythm with no pulse is PEA, whatever it looks like (sinus tach at a rhythm check before ROSC) */
-    const label = g => g.seize && !g.noPulse ? 'Seizure' : g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
+    const label = g => g.cpr ? 'CPR' : g.seize && !g.noPulse ? 'Seizure' : g.apnea ? (SH[g.rhythm] || rhName(g.rhythm)) + ', apnea' : g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
       g.noPulse && !/^(vf|asys|pea)$/.test(g.rhythm) ? 'PEA' : (SH[g.rhythm] || rhName(g.rhythm));
     /* purple during a seizure, blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
-    const fill = g => g.seize && !g.noPulse ? '#7a4a9a' : g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
+    const fill = g => g.cpr ? '#c4572a' : g.seize && !g.noPulse ? '#7a4a9a' : g.apnea ? '#8a7a1c' : g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
     const two = segs.some(g => X(g.to) - X(g.at) < 52);
     let s = `<svg viewBox="0 0 ${W} ${two ? 70 : 54}" xmlns="http://www.w3.org/2000/svg">`;
     segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = here && p.i >= g.i0 && p.i <= g.i1, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
@@ -3987,7 +3987,7 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     const v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d, q = p.s, rate = q.rhythm === 'asys' || q.rhythm === 'vf';
     const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${rate ? '---' : n('hr', '--')}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${q.noPulse ? '--' : n('spo2', '--')}</b></span>` +
       `<span><i>NBP</i><b style="color:${C.bp}">${q.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
-    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${q.scene === 'seizure' ? 'Seizure · ' : ''}${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
+    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${q.activity === 'cpr' ? 'CPR · ' : ''}${q.scene === 'seizure' ? 'Seizure · ' : ''}${!q.noPulse && q.v.rr === 0 ? 'Apnea · ' : ''}${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
     box.innerHTML = `<div class="tv-h">${esc(name)}<span>${drag ? 'let go to go here · ' : ''}${here ? fmtMS(knob) + ' / ' + fmtMS(st[st.length - 1].at) + (CRS.speed !== 1 ? ' scenario time · ' + CRS.speed + '× speed' : '') : 'drag the knob or click the bar'}</span></div>` + s + num + sub;
     /* drag or click: the window follows the pointer even when it leaves the bar (the bar is redrawn as it moves) */
     const elOf = ev => { const sv = box.querySelector('svg'), r = sv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W; return Math.max(0, Math.min(end, (x - L) / (W - L - Rr) * end)); };
@@ -4002,7 +4002,9 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     let box = document.getElementById('tlViz');
     const name = CRS.name || lastName; const steps = name && courseSteps(name);
     if (!steps || !steps.length) { if (box) box.remove(); return; }
-    if (!box || box.previousElementSibling !== stEl) { if (box) box.remove(); box = document.createElement('div'); box.id = 'tlViz'; stEl.after(box); force = true; }
+    /* right under the button group the scenario was picked from (no scrolling to the bottom of the list); the status line if it is not in the list */
+    const btn = [...document.querySelectorAll('#instr [data-course]')].find(x => x.dataset.course === name), anchor = (btn && btn.parentNode) || stEl;
+    if (!box || box.previousElementSibling !== anchor) { if (box) box.remove(); box = document.createElement('div'); box.id = 'tlViz'; anchor.after(box); force = true; }
     lastName = name;
     if (drag) return;   /* while dragging, the drag draws */
     const el = CRS.name === name ? (simT - CRS.t0) * CRS.speed : -1;
