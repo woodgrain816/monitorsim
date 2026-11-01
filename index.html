@@ -3093,6 +3093,74 @@ if (new URLSearchParams(location.search).has('autostart')) powerOn();
 try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeItem('hm.resume'); powerOn(); } else sessionStorage.removeItem('hm.resume'); } catch (e) {}
 </script>
 <style>#instr{overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3b5675 #121820}</style><script>canPopOut=function(){ return false }; try{ setInstrMode() }catch(e){}</script>
+<script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
+   The deterioration you clicked, drawn as a timeline under its status line in the Instructor panel: a horizontal line
+   for the time, a tick going up at every step with what happens there (red where the rhythm changes, e.g. sinus tach
+   -> PEA), a cyan marker for where the patient is now, and the step's numbers in the monitor's colours (HR, SpO2,
+   systolic/diastolic, RR). Click a tick to see that step's numbers; it follows the running step again on its own. */
+(function () {
+  const css = document.createElement('style');
+  css.textContent = `#tlViz{margin:8px 0 4px;background:#0b1016;border:1px solid #2a3a4d;border-radius:4px;padding:8px 8px 6px}
+#tlViz .tv-h{display:flex;justify-content:space-between;align-items:baseline;color:#e6eef8;font-size:12.5px;font-weight:600;margin-bottom:2px}
+#tlViz .tv-h span{color:#7f9ab8;font-weight:400;font-size:11.5px}
+#tlViz svg{display:block;width:100%;height:auto;overflow:visible}
+#tlViz .tv-n{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-top:4px;font-variant-numeric:tabular-nums}
+#tlViz .tv-n b{font-size:20px;font-weight:700;line-height:1}
+#tlViz .tv-n i{font-style:normal;font-size:10.5px;color:#7f9ab8;margin-right:2px}
+#tlViz .tv-s{color:#c2cfdd;font-size:12px;margin-top:4px;line-height:1.35}`;
+  document.head.appendChild(css);
+  const C = {hr: '#3fcf74', spo2: '#4cb9c9', bp: '#d94a9c', rr: '#e3e35a'};
+  const rhName = r => (typeof RHYTHMS !== 'undefined' && RHYTHMS[r]) || r || '';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  let pick = null, lastName = null, lastKey = '';
+
+  /* every step with the state the patient is in by then (numbers carry over from the steps before) */
+  function states(steps) {
+    let v = {}, rh = '', pl = false;
+    return steps.map(s => { if (s.v) Object.assign(v, s.v); if (s.now) Object.assign(v, s.now); const ch = !!(s.rhythm && s.rhythm !== rh); if (s.rhythm) rh = s.rhythm;
+      if ('pulseless' in s) pl = !!s.pulseless; if ('vtPulse' in s) pl = !s.vtPulse;
+      return {at: s.at, say: s.say || '', rhythm: rh, changed: ch, noPulse: pl || rh === 'pea' || rh === 'vf' || rh === 'asys', v: Object.assign({}, v)}; });
+  }
+  function draw(box, name, steps, el) {
+    const st = states(steps), end = Math.max(1, st[st.length - 1].at), W = 340, H = 150, L = 10, Rr = 12, ax = 128;
+    const X = at => L + (W - L - Rr) * Math.min(1, Math.max(0, at / end));
+    let cur = -1; for (let i = 0; i < st.length; i++) if (st[i].at <= el) cur = i;
+    const sel = pick != null ? pick : Math.max(0, cur);
+    let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    s += `<line x1="${L}" y1="${ax}" x2="${W - Rr}" y2="${ax}" stroke="#5b738e" stroke-width="2"/>`;
+    st.forEach((p, i) => { const x = X(p.at), top = ax - (i % 2 ? 38 : 58), col = p.changed && i ? '#ff5a4f' : i === sel ? '#7fb0ff' : '#8aa0b8';
+      const lab = (p.changed && i ? rhName(p.rhythm) : p.say) || rhName(p.rhythm);
+      s += `<g data-i="${i}" style="cursor:pointer"><rect x="${x - 7}" y="${top - 4}" width="14" height="${ax - top + 10}" fill="transparent"/>`;
+      s += `<line x1="${x}" y1="${ax}" x2="${x}" y2="${top}" stroke="${col}" stroke-width="${i === sel ? 2.5 : 1.5}"/><circle cx="${x}" cy="${top}" r="${i === sel ? 3.5 : 2.5}" fill="${col}"/>`;
+      s += `<text x="${x + 2}" y="${top - 4}" fill="${col}" font-size="9.5" transform="rotate(-38 ${x + 2} ${top - 4})">${esc(lab.length > 26 ? lab.slice(0, 25) + '…' : lab)}</text></g>`; });
+    if (el >= 0) { const x = X(el); s += `<line x1="${x}" y1="${ax - 70}" x2="${x}" y2="${ax + 6}" stroke="#00e5ff" stroke-width="2" stroke-dasharray="3 2"/><polygon points="${x - 4},${ax + 9} ${x + 4},${ax + 9} ${x},${ax + 3}" fill="#00e5ff"/>`; }
+    s += `<text x="${L}" y="${ax + 18}" fill="#7f9ab8" font-size="9.5">0:00</text><text x="${W - Rr}" y="${ax + 18}" fill="#7f9ab8" font-size="9.5" text-anchor="end">${fmtMS(end)}</text>`;
+    s += '</svg>';
+    const p = st[sel], v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d;
+    const hr = p.rhythm === 'asys' || p.rhythm === 'vf' ? '---' : n('hr', '--');
+    const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${hr}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${p.noPulse ? '--' : n('spo2', '--')}</b></span>` +
+      `<span><i>NBP</i><b style="color:${C.bp}">${p.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
+    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(p.at)}</b> · ${esc(rhName(p.rhythm))}${p.noPulse ? ' · no pulse' : ''} — ${esc(p.say)}</div>`;
+    box.innerHTML = `<div class="tv-h">${esc(name)}<span>${el >= 0 ? fmtMS(el) + ' / ' + fmtMS(end) : 'not running'}${pick != null ? ' · step ' + (pick + 1) + ' of ' + st.length : ''}</span></div>` + s + num + sub;
+    box.querySelectorAll('g[data-i]').forEach(g => g.onclick = () => { const i = +g.dataset.i; pick = pick === i ? null : i; tick(true); });
+  }
+  function tick(force) {
+    if (typeof CRS === 'undefined' || typeof courseSteps !== 'function') return;
+    const stEl = $('#crsState'); if (!stEl) return;
+    let box = document.getElementById('tlViz');
+    const name = CRS.name || lastName; const steps = name && courseSteps(name);
+    if (!steps || !steps.length) { if (box) box.remove(); return; }
+    if (!box || box.previousElementSibling !== stEl) { if (box) box.remove(); box = document.createElement('div'); box.id = 'tlViz'; stEl.after(box); force = true; }
+    if (name !== lastName) { pick = null; lastName = name; }
+    const el = CRS.name === name ? (simT - CRS.t0) * CRS.speed : -1;
+    const key = name + '|' + Math.floor(el) + '|' + pick; if (!force && key === lastKey) return; lastKey = key;
+    draw(box, name, steps, el);
+  }
+  /* clicking a deterioration starts it: draw its timeline straight away */
+  if (typeof courseStart === 'function') { const c0 = courseStart; courseStart = function () { const r = c0.apply(this, arguments); lastName = CRS.name; pick = null; tick(true); return r; }; }
+  setInterval(() => tick(false), 500);
+})();
+</script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
 </body>
 </html>
