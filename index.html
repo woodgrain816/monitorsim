@@ -3219,6 +3219,116 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
   try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
 })();
 </script>
+<script>/* WEBSITE ONLY (added by deploy.js): resuscitations for the Instructor's Deteriorations list.
+   CPR = compression artifact on the traces, paused for each rhythm check. Bag-valve-mask breaths = 10 a minute with the
+   CO2 wave on each squeeze. A step with shock: true delivers a shock (the trace jolts); the rhythm after the shock is
+   the next step's. Return of circulation shows the way a real monitor shows it first: EtCO2 jumping from the low teens
+   to the high 30s, then a pulse wave and a pressure. Timing follows ACLS 2-minute cycles. */
+(function () {
+  if (typeof COURSES === 'undefined') return;
+  const CPR = (at, say, x) => Object.assign({at, say, artifact: true, v: {rr: 10, etco2: 16}}, x || {});
+  const CHECK = (at, say, x) => Object.assign({at, say: say || 'Rhythm check (compressions paused)', artifact: false}, x || {});
+  const ROSC = at => [
+    {at, say: 'ROSC: EtCO2 jumps, pulse back', artifact: false, rhythm: 'stach', pulseless: false, vtPulse: true, now: {hr: 124}, ramp: 8, v: {etco2: 42, sys: 84, dia: 52, spo2: 88, rr: 10}},
+    {at: at + 40, say: 'Post-arrest: pressure coming up', v: {hr: 112, sys: 98, dia: 60, spo2: 93, etco2: 38}},
+    {at: at + 120, say: 'Post-arrest care, stabilizing', v: {hr: 102, sys: 112, dia: 68, spo2: 96, etco2: 36, rr: 12}}];
+  const add = {
+    'Code: VF → CPR → shock → ROSC': [
+      {at: 0, say: 'Witnessed collapse: VF', ramp: 3, rhythm: 'vf', coarse: true, ectopy: 'none', v: {hr: 0, spo2: 90, sys: 0, dia: 0, cvp: 8, rr: 0, etco2: 12, temp: 36.8, st: 0}},
+      CPR(10, 'CPR started, bag-valve-mask breaths'),
+      CHECK(130, 'Rhythm check: VF'), {at: 136, say: 'Shock 1 (200 J biphasic)', shock: true},
+      CPR(140, 'CPR resumes straight after the shock'),
+      CHECK(260, 'Rhythm check: still VF'), {at: 266, say: 'Shock 2 (200 J), epinephrine 1 mg', shock: true},
+      CPR(270, 'CPR, epinephrine given'),
+      CHECK(390, 'Rhythm check: organized rhythm', {rhythm: 'stach', pulseless: true, now: {hr: 118}}),
+      ...ROSC(398)],
+    'Code: VF refractory (3 shocks, amiodarone) → ROSC': [
+      {at: 0, say: 'VF arrest', ramp: 3, rhythm: 'vf', coarse: true, ectopy: 'none', v: {hr: 0, spo2: 88, sys: 0, dia: 0, cvp: 8, rr: 0, etco2: 10, temp: 36.8, st: 0}},
+      CPR(8, 'CPR + bag-valve-mask'), CHECK(128, 'Rhythm check: VF'), {at: 134, say: 'Shock 1', shock: true},
+      CPR(138, 'CPR'), CHECK(258, 'Rhythm check: VF'), {at: 264, say: 'Shock 2, epinephrine 1 mg', shock: true},
+      CPR(268, 'CPR, epinephrine'), CHECK(388, 'Rhythm check: VF (finer)', {coarse: false}), {at: 394, say: 'Shock 3, amiodarone 300 mg', shock: true},
+      CPR(398, 'CPR, amiodarone given', {coarse: true}), CHECK(518, 'Rhythm check: organized rhythm', {rhythm: 'nsr', pulseless: true, now: {hr: 96}}),
+      ...ROSC(526)],
+    'Code: pulseless VT → shock → ROSC': [
+      {at: 0, say: 'Pulseless VT', ramp: 3, rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 190}, v: {spo2: 90, sys: 0, dia: 0, cvp: 8, rr: 0, etco2: 14, temp: 36.9, st: 0}},
+      CPR(10, 'CPR started, defibrillator on'), CHECK(70, 'Rhythm check: pulseless VT'), {at: 76, say: 'Shock 1 (200 J)', shock: true},
+      CPR(80, 'CPR resumes'), CHECK(200, 'Rhythm check: organized rhythm', {rhythm: 'stach', vtPulse: true, pulseless: true, now: {hr: 120}}),
+      ...ROSC(208)],
+    'Code: PEA → CPR + epinephrine → ROSC': [
+      {at: 0, say: 'PEA arrest (bleeding)', ramp: 3, rhythm: 'pea', ectopy: 'none', now: {hr: 104}, v: {spo2: 88, sys: 0, dia: 0, cvp: 2, rr: 0, etco2: 10, temp: 36.6, st: 0}},
+      CPR(10, 'CPR + bag-valve-mask, epinephrine 1 mg (no shock for PEA)'),
+      CHECK(130, 'Rhythm check: PEA, no pulse'), CPR(140, 'CPR, blood and fluids going in'),
+      CHECK(260, 'Rhythm check: PEA'), CPR(268, 'CPR, epinephrine again'),
+      CHECK(388, 'Rhythm check: pulse felt', {rhythm: 'stach', pulseless: false, now: {hr: 128}}),
+      ...ROSC(392)],
+    'Code: asystole → CPR → no ROSC': [
+      {at: 0, say: 'Asystole (confirm in two leads)', ramp: 3, rhythm: 'asys', ectopy: 'none', v: {hr: 0, spo2: 80, sys: 0, dia: 0, cvp: 6, rr: 0, etco2: 8, temp: 36.2, st: 0}},
+      CPR(10, 'CPR + bag-valve-mask, epinephrine 1 mg (no shock)', {v: {rr: 10, etco2: 12}}),
+      CHECK(130, 'Rhythm check: asystole'), CPR(138, 'CPR, epinephrine every 3-5 min', {v: {rr: 10, etco2: 11}}),
+      CHECK(258, 'Rhythm check: asystole'), CPR(266, 'CPR', {v: {rr: 10, etco2: 9}}),
+      CHECK(386, 'Rhythm check: asystole'), CPR(394, 'CPR', {v: {rr: 10, etco2: 8}}),
+      CHECK(514, 'Rhythm check: asystole, EtCO2 under 10', {v: {rr: 0, etco2: 4}}),
+      {at: 540, say: 'Resuscitation stopped (time of death)', v: {etco2: 0}}],
+    'Code: VF → shock → asystole → CPR → ROSC': [
+      {at: 0, say: 'VF arrest', ramp: 3, rhythm: 'vf', coarse: true, ectopy: 'none', v: {hr: 0, spo2: 88, sys: 0, dia: 0, cvp: 8, rr: 0, etco2: 12, temp: 36.8, st: 0}},
+      CPR(8, 'CPR + bag-valve-mask'), CHECK(128, 'Rhythm check: VF'), {at: 134, say: 'Shock 1', shock: true},
+      {at: 136, say: 'Post-shock asystole (stunned heart)', rhythm: 'asys'}, CPR(140, 'CPR, epinephrine 1 mg'),
+      CHECK(260, 'Rhythm check: asystole'), CPR(268, 'CPR'),
+      CHECK(388, 'Rhythm check: organized, slow', {rhythm: 'sbrady', pulseless: true, now: {hr: 48}}),
+      {at: 396, say: 'Pulse back: ROSC (bradycardic)', rhythm: 'sbrady', pulseless: false, now: {hr: 52}, ramp: 8, v: {etco2: 40, sys: 78, dia: 46, spo2: 86, rr: 10}},
+      {at: 450, say: 'Epinephrine drip, rate up', rhythm: 'nsr', v: {hr: 78, sys: 98, dia: 60, spo2: 93}},
+      {at: 540, say: 'Post-arrest care', v: {hr: 84, sys: 110, dia: 68, spo2: 96, etco2: 36, rr: 12}}],
+    'Code: failed resuscitation (VF → fine VF → asystole)': [
+      {at: 0, say: 'Unwitnessed VF arrest', ramp: 3, rhythm: 'vf', coarse: false, ectopy: 'none', v: {hr: 0, spo2: 78, sys: 0, dia: 0, cvp: 6, rr: 0, etco2: 8, temp: 36.0, st: 0}},
+      CPR(8, 'CPR + bag-valve-mask', {v: {rr: 10, etco2: 10}}), CHECK(128, 'Rhythm check: fine VF'), {at: 134, say: 'Shock 1', shock: true},
+      CPR(138, 'CPR, epinephrine', {v: {rr: 10, etco2: 9}}), CHECK(258, 'Rhythm check: fine VF'), {at: 264, say: 'Shock 2, amiodarone 300 mg', shock: true},
+      CPR(268, 'CPR', {v: {rr: 10, etco2: 8}}), CHECK(388, 'Rhythm check: asystole', {rhythm: 'asys'}),
+      CPR(396, 'CPR, epinephrine', {v: {rr: 10, etco2: 7}}), CHECK(516, 'Rhythm check: asystole'),
+      {at: 530, say: 'Resuscitation stopped (time of death)', v: {rr: 0, etco2: 0}}],
+    'Respiratory arrest → bag-valve-mask → recovery': [
+      {at: 0, say: 'Opioid overdose, barely breathing', ramp: 5, rhythm: 'sbrady', ectopy: 'none', v: {hr: 52, spo2: 78, sys: 98, dia: 60, cvp: 6, rr: 3, etco2: 66, temp: 36.4, st: 0}},
+      {at: 40, say: 'Apnea, pulse still there', v: {rr: 0, spo2: 70, hr: 46}},
+      {at: 70, say: 'Bag-valve-mask: one breath every 6 s', v: {rr: 10, etco2: 52, spo2: 80, hr: 58}},
+      {at: 150, say: 'Oxygenating, CO2 coming down', v: {spo2: 90, etco2: 44, hr: 68}},
+      {at: 200, say: 'Naloxone 0.4 mg IV', v: {spo2: 94}},
+      {at: 260, say: 'Breathing on his own', rhythm: 'nsr', v: {rr: 14, etco2: 40, spo2: 96, hr: 88, sys: 124, dia: 78}},
+      {at: 330, say: 'Awake, agitated (withdrawal)', rhythm: 'stach', v: {hr: 112, rr: 20, sys: 142, dia: 88, etco2: 34}}],
+    'Unstable SVT → adenosine → cardioversion': [
+      {at: 0, say: 'SVT, hypotensive', ramp: 3, rhythm: 'svt', ectopy: 'none', now: {hr: 210}, v: {spo2: 95, sys: 78, dia: 50, cvp: 5, rr: 24, etco2: 32, temp: 36.9, st: -1}},
+      {at: 60, say: 'Adenosine 6 mg: a few seconds of pause', rhythm: 'asys'}, {at: 65, say: 'SVT comes back', rhythm: 'svt', now: {hr: 208}},
+      {at: 120, say: 'Synchronized cardioversion 100 J', shock: true},
+      {at: 122, say: 'Sinus rhythm', rhythm: 'nsr', now: {hr: 96}, ramp: 20, v: {sys: 104, dia: 66, st: 0, rr: 18}},
+      {at: 200, say: 'Stable', v: {hr: 84, sys: 118, dia: 74, spo2: 97}}],
+    'Unstable AFib RVR → cardioversion → sinus': [
+      {at: 0, say: 'AF with RVR, hypotensive', ramp: 3, rhythm: 'afib', ectopy: 'none', v: {hr: 176, spo2: 93, sys: 80, dia: 52, cvp: 7, rr: 26, etco2: 33, temp: 37.0, st: -1}},
+      {at: 60, say: 'Sedated for cardioversion', v: {rr: 14, spo2: 95}},
+      {at: 90, say: 'Synchronized cardioversion 200 J', shock: true},
+      {at: 92, say: 'Sinus rhythm', rhythm: 'nsr', ramp: 20, v: {hr: 92, sys: 106, dia: 66, st: 0}},
+      {at: 180, say: 'Stable in sinus', v: {hr: 82, sys: 116, dia: 72, rr: 16, spo2: 97}}],
+    'Torsades → shock + magnesium → sinus': [
+      {at: 0, say: 'Long QT, R-on-T PVCs', ramp: 3, rhythm: 'sbrady', ectopy: 'ront', v: {hr: 52, spo2: 96, sys: 110, dia: 70, cvp: 6, rr: 16, etco2: 36, temp: 36.8, st: 0}},
+      {at: 40, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 230}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
+      CPR(50, 'CPR, pads on'), CHECK(110, 'Rhythm check: torsades'), {at: 114, say: 'Shock (unsynchronized)', shock: true},
+      {at: 116, say: 'Sinus brady, magnesium 2 g', rhythm: 'sbrady', vtPulse: true, artifact: false, now: {hr: 56}, ramp: 10, v: {sys: 92, dia: 56, etco2: 38, rr: 12, spo2: 92}},
+      {at: 200, say: 'Overdrive pacing at 90', rhythm: 'paced', v: {hr: 90, sys: 112, dia: 70, spo2: 96}}],
+    'Symptomatic brady → atropine → pacing': [
+      {at: 0, say: 'Dizzy, HR 38', ramp: 3, rhythm: 'sbrady', ectopy: 'none', v: {hr: 38, spo2: 95, sys: 78, dia: 48, cvp: 7, rr: 18, etco2: 36, temp: 36.8, st: 0}},
+      {at: 60, say: 'Atropine 1 mg: brief rise', v: {hr: 52, sys: 88, dia: 54}},
+      {at: 150, say: 'Slowing again, complete block', rhythm: 'avb3', v: {hr: 34, sys: 72, dia: 44}},
+      {at: 210, say: 'Transcutaneous pacing at 70 (capture)', rhythm: 'paced', ramp: 6, v: {hr: 70, sys: 104, dia: 64, spo2: 96}},
+      {at: 300, say: 'Stable on the pacer', v: {sys: 112, dia: 70}}]
+  };
+  for (const k in add) if (!COURSES[k]) COURSES[k] = add[k];
+  /* a step with shock: true delivers a shock (the trace jolts) when the scenario reaches it */
+  if (typeof courseTick === 'function' && typeof shock === 'function') {
+    const t0 = courseTick;
+    courseTick = function () { const name = CRS.name, i0 = CRS.i; const r = t0.apply(this, arguments);
+      const st = name && courseSteps(name); if (st && CRS.name === name) for (let i = i0; i < CRS.i; i++) if (st[i] && st[i].shock) { try { shock(''); } catch (e) {} }
+      return r; };
+  }
+  try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
+})();
+</script>
 <script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
    The deterioration you clicked, as a progress bar under its status line in the Instructor panel, like a video's:
    one section per rhythm with a divider between them and the rhythm's name underneath, and a round knob riding the
