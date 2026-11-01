@@ -1,5 +1,5 @@
-# Patient Monitor
+# Moniter Sim
 
 Patient monitor simulator.
 
-Open it: https://woodgrain816.github.io/patientmonitor/
+Open it: https://woodgrain816.github.io/monitersim/
