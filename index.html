@@ -3970,8 +3970,11 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     const knob = drag ? drag.el : el, p = at(st, Math.max(0, knob)), here = knob >= 0;
     const segs = []; st.forEach((q, i) => { const cpr = q.activity === 'cpr', apnea = !q.noPulse && q.v.rr === 0; const k = q.rhythm + '|' + q.noPulse + '|' + (q.scene === 'seizure') + '|' + cpr + '|' + apnea; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, seize: q.scene === 'seizure', cpr, apnea, at: q.at}) });
     segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
+    /* CPR cycles numbered (CPR 1, CPR 2...), and every shock marked above the bar (Shock 1, Shock 2...) */
+    let nc = 0; segs.forEach(g => { if (g.cpr) g.n = ++nc; });
+    const shocks = []; steps.forEach(q => { if (q.shock) shocks.push(q.at); });
     /* an organized rhythm with no pulse is PEA, whatever it looks like (sinus tach at a rhythm check before ROSC) */
-    const label = g => g.cpr ? 'CPR' : g.seize && !g.noPulse ? 'Seizure' : g.apnea ? (SH[g.rhythm] || rhName(g.rhythm)) + ', apnea' : g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
+    const label = g => g.cpr ? 'CPR ' + g.n : g.seize && !g.noPulse ? 'Seizure' : g.apnea ? (SH[g.rhythm] || rhName(g.rhythm)) + ', apnea' : g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
       g.noPulse && !/^(vf|asys|pea)$/.test(g.rhythm) ? 'PEA' : (SH[g.rhythm] || rhName(g.rhythm));
     /* purple during a seizure, blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
     const fill = g => g.cpr ? '#c4572a' : g.seize && !g.noPulse ? '#7a4a9a' : g.apnea ? '#8a7a1c' : g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
@@ -3983,6 +3986,7 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
       if (j) s += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 + bh}" stroke="#0b1016" stroke-width="2"/>`; });
     s += `<rect x="${L}" y="${y0}" width="${W - L - Rr}" height="${bh}" rx="3" fill="none" stroke="#5b738e" stroke-width="1"/>`;
     if (here) { const x = X(knob); s += `<rect x="${L}" y="${y0 + bh - 3}" width="${Math.max(0, x - L)}" height="3" fill="#00e5ff" opacity=".55"/><circle cx="${x}" cy="${y0 + bh / 2}" r="7.5" fill="#00e5ff" stroke="#0b1016" stroke-width="2"/>`; }
+    shocks.forEach((t, j) => { const x = X(t); s += `<line x1="${x}" y1="${y0 - 2}" x2="${x}" y2="${y0 + bh}" stroke="#ffd23f" stroke-width="2"/><text x="${x}" y="${y0 - 4}" fill="#ffd23f" font-size="9.5" font-weight="700" text-anchor="middle">Shock ${j + 1}</text>`; });
     s += '</svg>';
     const v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d, q = p.s, rate = q.rhythm === 'asys' || q.rhythm === 'vf';
     const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${rate ? '---' : n('hr', '--')}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${q.noPulse ? '--' : n('spo2', '--')}</b></span>` +
