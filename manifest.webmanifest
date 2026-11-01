@@ -1,7 +1,7 @@
 {
-  "name": "House Monitor",
-  "short_name": "House Monitor",
-  "description": "CARESCAPE B450-style patient monitor simulator (House M.D. sounds)",
+  "name": "Patient Monitor",
+  "short_name": "Patient Monitor",
+  "description": "Patient monitor simulator",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
