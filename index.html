@@ -3800,6 +3800,109 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
 })();
 </script>
+<script>/* WEBSITE ONLY (added by deploy.js): two poisonings that run from before the exposure until the patient dies, and the
+   Instructor's Deteriorations list sorted under headings (Resuscitation first, so the CPR / shock scenarios are easy to
+   find) instead of one long run of buttons. */
+(function () {
+  if (typeof COURSES === 'undefined') return;
+  const base = (say, v, x) => Object.assign({at: 0, say, ramp: 5, rhythm: 'nsr', ectopy: 'none', qrsx: 1, v: Object.assign({hr: 78, spo2: 98, sys: 124, dia: 78, cvp: 6, rr: 14, etco2: 38, temp: 36.8, st: 0}, v)}, x || {});
+  const add = {
+    /* cyanide stops the cells using oxygen (cytochrome oxidase). The blood stays full of oxygen, so the SpO2 reads
+       normal almost to the end; lactic acidosis drives fast deep breathing (low EtCO2: little CO2 is being made); early
+       fast heart and high pressure, then seizure, coma, slow heart and low pressure, ST changes as the pressure falls,
+       apnea, and only then does the SpO2 drop. Arrest is non-shockable. (Swallowed cyanide salt: minutes.) */
+    'Cyanide poisoning → death': [
+      base('Before: well, normal numbers'),
+      {at: 30, say: 'Swallows a cyanide salt (no change yet)'},
+      {at: 90, say: 'Headache, anxious, palpitations', rhythm: 'stach', v: {hr: 112, sys: 148, dia: 90, rr: 22, etco2: 34, spo2: 99}},
+      {at: 180, say: 'Air hunger: fast deep breathing (lactic acidosis). SpO2 normal: the cells cannot use the oxygen', v: {hr: 128, sys: 162, dia: 96, rr: 32, etco2: 26, spo2: 99}},
+      {at: 270, say: 'Confused, vomiting', v: {hr: 136, sys: 150, dia: 92, rr: 34, etco2: 24, spo2: 99}},
+      {at: 330, say: 'Generalized seizure', scene: 'seizure', onset: {hr: 2, rr: 2, sys: 15, dia: 15, spo2: 8}, v: {hr: 150, sys: 158, dia: 96, rr: 30, etco2: 28, spo2: 95}},
+      {at: 420, say: 'Seizure stops: coma, gasping', scene: null, ramp: 40, v: {hr: 104, sys: 108, dia: 66, rr: 10, etco2: 24, spo2: 97}},
+      {at: 490, say: 'Shock: pressure falling, heart slowing, ST changes', rhythm: 'sbrady', ectopy: 'pvc', v: {hr: 54, sys: 76, dia: 42, rr: 6, etco2: 20, spo2: 96, st: 2}},
+      {at: 560, say: 'Apnea: now the SpO2 falls', rhythm: 'junct', ectopy: 'none', qrsx: 1.3, v: {hr: 40, sys: 58, dia: 32, rr: 0, etco2: 14, spo2: 86, st: 2.5}},
+      {at: 620, say: 'Wide, slow, failing', rhythm: 'idio', qrsx: 1.6, v: {hr: 30, sys: 42, dia: 24, spo2: 72}},
+      {at: 680, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 26, etco2: 6}},
+      {at: 760, say: 'Asystole: dead', rhythm: 'asys', v: {etco2: 0}}],
+    /* fentanyl is far stronger and faster than older opioids: within a minute or two of an IV dose the breathing slows,
+       then stops, sometimes with a rigid "wooden" chest that cannot be bagged easily. Death is hypoxic: CO2 climbs and the
+       SpO2 falls while the heart still beats, then the hypoxic heart slows, widens and stops. Opioid arrests are almost
+       always non-shockable (PEA / asystole, not VF). */
+    'Fentanyl overdose → death': [
+      base('Before: restless, mild withdrawal', {hr: 94, sys: 134, dia: 86, rr: 18, spo2: 97, etco2: 37, temp: 37.0}),
+      {at: 30, say: 'Injects fentanyl (IV)'},
+      {at: 60, say: 'Nodding off, pinpoint pupils, breathing slowing', v: {hr: 76, sys: 118, dia: 72, rr: 8, etco2: 48, spo2: 94}},
+      {at: 95, say: 'Chest wall rigidity ("wooden chest"): barely moving air', v: {hr: 70, rr: 2, etco2: 58, spo2: 89}},
+      {at: 130, say: 'Apnea, heart still beating', v: {hr: 66, sys: 108, dia: 64, rr: 0, spo2: 80}},
+      {at: 190, say: 'Cyanotic, hypoxic', rhythm: 'sbrady', v: {hr: 56, sys: 94, dia: 54, spo2: 66}},
+      {at: 250, say: 'Hypoxic bradycardia', ectopy: 'pvc', v: {hr: 44, sys: 78, dia: 44, spo2: 52, st: -1.5}},
+      {at: 310, say: 'Junctional escape, pressure failing', rhythm: 'junct', ectopy: 'none', v: {hr: 34, sys: 56, dia: 30, spo2: 40}},
+      {at: 370, say: 'Wide agonal rhythm', rhythm: 'idio', qrsx: 1.6, v: {hr: 26, sys: 38, dia: 20, etco2: 30}},
+      {at: 430, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 22, etco2: 8}},
+      {at: 510, say: 'Asystole: dead', rhythm: 'asys', v: {etco2: 0}}],
+    /* treated early: the antidote works within minutes while the heart is still beating */
+    'Fentanyl overdose: early naloxone + bagging → recovers': [
+      base('Found slumped, slow breathing', {hr: 72, sys: 116, dia: 70, rr: 5, spo2: 86, etco2: 62, temp: 36.6}),
+      {at: 40, say: 'Bag-valve-mask with oxygen, pulse still present', v: {rr: 10, spo2: 92, etco2: 54, hr: 70}},
+      {at: 90, say: 'Naloxone given (nose or IV)', v: {spo2: 96, etco2: 46}},
+      {at: 150, say: 'Wakes, breathing on his own, agitated (withdrawal)', rhythm: 'stach', v: {hr: 112, sys: 146, dia: 90, rr: 20, spo2: 97, etco2: 36}},
+      {at: 420, say: 'Naloxone wearing off: drowsy and slowing again, needs a repeat dose or an infusion', rhythm: 'nsr', v: {hr: 70, rr: 7, spo2: 91, etco2: 52, sys: 112, dia: 68}},
+      {at: 480, say: 'Repeat naloxone: breathing again, admitted for observation', v: {hr: 90, rr: 14, spo2: 97, etco2: 38, sys: 124, dia: 78}}],
+    /* treated late: the heart has already been starved of oxygen, so the arrest is PEA and the chance of waking up is low */
+    'Fentanyl overdose: late naloxone → arrest → CPR': [
+      base('Found down, not breathing, pulse slow', {hr: 40, sys: 70, dia: 40, rr: 0, spo2: 62, etco2: 20, temp: 36.2}, {rhythm: 'sbrady'}),
+      {at: 40, say: 'Hypoxic: junctional, pressure failing', rhythm: 'junct', v: {hr: 30, sys: 50, dia: 28, spo2: 50}},
+      {at: 80, say: 'PEA arrest, CPR + bag-valve-mask, naloxone given', rhythm: 'pea', pulseless: true, v: {hr: 24, sys: 0, dia: 0, etco2: 14, rr: 10}, activity: 'cpr'},
+      {at: 200, say: 'Rhythm check: PEA, epinephrine', activity: null},
+      {at: 210, say: 'CPR resumes', activity: 'cpr', v: {etco2: 16}},
+      {at: 330, say: 'Rhythm check: still PEA', activity: null},
+      {at: 340, say: 'CPR', activity: 'cpr', v: {etco2: 12}},
+      {at: 460, say: 'Rhythm check: asystole, EtCO2 low. Resuscitation stopped', activity: null, rhythm: 'asys', v: {rr: 0, etco2: 0}}],
+    'Cyanide poisoning: early hydroxocobalamin → recovers': [
+      base('Anxious, breathing fast', {hr: 126, sys: 158, dia: 94, rr: 32, etco2: 26, spo2: 99}, {rhythm: 'stach'}),
+      {at: 60, say: 'High-flow oxygen on, IV placed, lactate very high', v: {hr: 130, rr: 34, etco2: 24}},
+      {at: 120, say: 'Hydroxocobalamin infusion started', v: {hr: 122, rr: 30}},
+      {at: 300, say: 'Breathing easing, less confused', v: {hr: 104, sys: 138, dia: 84, rr: 22, etco2: 32}},
+      {at: 600, say: 'Back to normal rate, ICU for observation (urine and skin turn red)', rhythm: 'nsr', v: {hr: 86, sys: 126, dia: 78, rr: 16, etco2: 38}}],
+    'Cyanide poisoning: late hydroxocobalamin → arrest → CPR': [
+      base('Found unresponsive, gasping', {hr: 44, sys: 66, dia: 36, rr: 4, etco2: 16, spo2: 90, st: 2}, {rhythm: 'sbrady'}),
+      {at: 40, say: 'Oxygen, bag-valve-mask, hydroxocobalamin started', v: {rr: 10, spo2: 94}},
+      {at: 80, say: 'Wide slow rhythm, pressure failing', rhythm: 'idio', qrsx: 1.5, v: {hr: 30, sys: 44, dia: 24}},
+      {at: 120, say: 'PEA arrest, CPR, epinephrine', rhythm: 'pea', pulseless: true, v: {hr: 26, sys: 0, dia: 0, etco2: 14}, activity: 'cpr'},
+      {at: 240, say: 'Rhythm check: PEA', activity: null},
+      {at: 250, say: 'CPR continues, antidote still running', activity: 'cpr'},
+      {at: 360, say: 'Rhythm check: organized rhythm, pulse back (ROSC) with antidote on board', activity: null, rhythm: 'stach', pulseless: false, qrsx: 1, ramp: 8, v: {hr: 118, sys: 82, dia: 48, etco2: 36, rr: 10, spo2: 94}},
+      {at: 480, say: 'Post-arrest: pressure improving, ICU, brain injury still possible', v: {hr: 104, sys: 104, dia: 62, spo2: 97, etco2: 38, rr: 12}}]
+  };
+  for (const k in add) if (!COURSES[k]) COURSES[k] = add[k];
+
+  /* the Deteriorations list under headings; the first heading that matches a name wins */
+  const GROUPS = [
+    ['Resuscitation: CPR, shocks, cardioversion, pacing', n => /^Code:|bag-valve|cardioversion|shock \+|→ pacing/.test(n)],
+    ['Seizures', n => /seizure/i.test(n)],
+    ['Poisoning & overdose', n => /overdose|poison|cyanide|fentanyl|cocaine|digoxin|drug/i.test(n)],
+    ['Heart rhythm & heart attack', n => /block|AFib|SVT|VT|VF|torsades|brady|STEMI|Heart attack|potassium|Pacemaker|Hypothermia|commotio/i.test(n)],
+    ['Breathing', n => /Respiratory|Asthma|COPD|pulmonary|pneumo|Drowning|Pneumonia|edema/i.test(n)],
+    ['Bleeding & shock', n => /Bleed|hemorrhage|AAA|dissection|tamponade|Sepsis|Septic|Anaphylaxis|Neurogenic|shock/i.test(n)],
+    ['Other', () => true]];
+  const css = document.createElement('style');
+  css.textContent = '#instr .crs-g{color:#9fc3ea;font-size:12px;font-weight:700;margin:10px 0 4px;letter-spacing:.02em}#instr .crs-g:first-child{margin-top:4px}';
+  document.head.appendChild(css);
+  function group() {
+    const btns = [...document.querySelectorAll('#instr .presets > button[data-course]')]; if (!btns.length) return;
+    const box = btns[0].parentNode, own = new Set(Object.keys((S && S.timelines) || {})), frag = document.createDocumentFragment(), lists = {};
+    for (const b of btns) { const n = b.dataset.course, g = own.has(n) ? 'Your timelines' : GROUPS.find(x => x[1](n))[0]; (lists[g] = lists[g] || []).push(b); }
+    for (const g of GROUPS.map(x => x[0]).concat('Your timelines')) if (lists[g]) {
+      const h = document.createElement('div'); h.className = 'crs-g'; h.textContent = g + ' (' + lists[g].length + ')';
+      const d = document.createElement('div'); d.className = 'presets'; lists[g].forEach(b => d.appendChild(b));   // moving keeps each button's onclick
+      frag.append(h, d);
+    }
+    const wrap = document.createElement('div'); wrap.appendChild(frag); box.replaceWith(wrap);
+  }
+  if (typeof buildInstructor === 'function') { const b0 = buildInstructor; buildInstructor = function () { const r = b0.apply(this, arguments); try { group(); } catch (e) {} return r; }; }
+  try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
+})();
+</script>
 <script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
    The deterioration you clicked, as a progress bar under its status line in the Instructor panel, like a video's:
    one section per rhythm with a divider between them and the rhythm's name underneath, and a round knob riding the
@@ -3865,13 +3968,13 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   function draw(box, name, steps, el) {
     const st = states(steps), end = span(st), X = t => L + (W - L - Rr) * Math.min(1, Math.max(0, t / end));
     const knob = drag ? drag.el : el, p = at(st, Math.max(0, knob)), here = knob >= 0;
-    const segs = []; st.forEach((q, i) => { const k = q.rhythm + '|' + q.noPulse; const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, at: q.at}) });
+    const segs = []; st.forEach((q, i) => { const k = q.rhythm + '|' + q.noPulse + '|' + (q.scene === 'seizure'); const g = segs[segs.length - 1]; if (g && g.k === k) g.i1 = i; else segs.push({k, i0: i, i1: i, rhythm: q.rhythm, noPulse: q.noPulse, seize: q.scene === 'seizure', at: q.at}) });
     segs.forEach((g, j) => { g.to = j + 1 < segs.length ? segs[j + 1].at : end });
     /* an organized rhythm with no pulse is PEA, whatever it looks like (sinus tach at a rhythm check before ROSC) */
-    const label = g => g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
+    const label = g => g.seize && !g.noPulse ? 'Seizure' : g.rhythm === 'vt' && g.noPulse ? 'Pulseless VT' : g.rhythm === 'idio' && g.noPulse ? 'Agonal' :
       g.noPulse && !/^(vf|asys|pea)$/.test(g.rhythm) ? 'PEA' : (SH[g.rhythm] || rhName(g.rhythm));
-    /* blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
-    const fill = g => g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
+    /* purple during a seizure, blue-grey while there is a pulse, amber for the dangerous fast or slow ones, red with no pulse, dark for asystole */
+    const fill = g => g.seize && !g.noPulse ? '#7a4a9a' : g.rhythm === 'asys' ? '#2b2f36' : g.noPulse ? '#a3362f' : /vt|svt|avb3|mob2|junct|idio/.test(g.rhythm) ? '#9a6a1c' : '#2f5f8a';
     const two = segs.some(g => X(g.to) - X(g.at) < 52);
     let s = `<svg viewBox="0 0 ${W} ${two ? 70 : 54}" xmlns="http://www.w3.org/2000/svg">`;
     segs.forEach((g, j) => { const x0 = X(g.at), x1 = X(g.to), on = here && p.i >= g.i0 && p.i <= g.i1, ty = y0 + bh + 13 + (two && j % 2 ? 14 : 0);
@@ -3884,7 +3987,7 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     const v = p.v, n = (k, d) => v[k] != null ? Math.round(v[k]) : d, q = p.s, rate = q.rhythm === 'asys' || q.rhythm === 'vf';
     const num = `<div class="tv-n"><span><i>HR</i><b style="color:${C.hr}">${rate ? '---' : n('hr', '--')}</b></span><span><i>SpO₂</i><b style="color:${C.spo2}">${q.noPulse ? '--' : n('spo2', '--')}</b></span>` +
       `<span><i>NBP</i><b style="color:${C.bp}">${q.noPulse ? '--/--' : n('sys', '--') + '/' + n('dia', '--')}</b></span><span><i>RR</i><b style="color:${C.rr}">${n('rr', '--')}</b></span></div>`;
-    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
+    const sub = `<div class="tv-s"><b style="color:#e6eef8">${fmtMS(Math.max(0, knob))}</b> · ${q.scene === 'seizure' ? 'Seizure · ' : ''}${esc(rhName(q.rhythm))}${q.noPulse ? ' · no pulse' : ''} — ${esc(q.say)}${p.next && p.f > 0.02 ? ' <span style="color:#7f9ab8">→ ' + esc(p.next.say) + '</span>' : ''}</div>`;
     box.innerHTML = `<div class="tv-h">${esc(name)}<span>${drag ? 'let go to go here · ' : ''}${here ? fmtMS(knob) + ' / ' + fmtMS(st[st.length - 1].at) + (CRS.speed !== 1 ? ' scenario time · ' + CRS.speed + '× speed' : '') : 'drag the knob or click the bar'}</span></div>` + s + num + sub;
     /* drag or click: the window follows the pointer even when it leaves the bar (the bar is redrawn as it moves) */
     const elOf = ev => { const sv = box.querySelector('svg'), r = sv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W; return Math.max(0, Math.min(end, (x - L) / (W - L - Rr) * end)); };
