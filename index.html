@@ -3329,6 +3329,177 @@ try { if (sessionStorage.getItem('hm.resume') === '1') { sessionStorage.removeIt
   try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
 })();
 </script>
+<script>/* WEBSITE ONLY (added by deploy.js): a third batch of deteriorations so the list covers the common bedside emergencies:
+   cardiac, respiratory, metabolic, toxic, obstetric, trauma, environmental, the benign look-alikes, and the ones where
+   the monitor misleads you (carbon monoxide, pacemaker failure). Adult numbers along the usual course of each. */
+(function () {
+  if (typeof COURSES === 'undefined') return;
+  const B = (rh, v, x) => Object.assign({at: 0, ramp: 5, rhythm: rh, ectopy: 'none', v: Object.assign({hr: 80, spo2: 97, sys: 124, dia: 78, cvp: 6, rr: 16, etco2: 36, temp: 37.0, st: 0}, v)}, x || {});
+  const add = {
+    'Inferior STEMI → bradycardia → complete block': [
+      Object.assign(B('nsr', {hr: 78, sys: 132, dia: 82}), {say: 'Chest pain, inferior ST elevation'}),
+      {at: 45, say: 'ST elevation rising', v: {st: 2.5, hr: 70}},
+      {at: 120, say: 'Sinus bradycardia (vagal, right coronary)', rhythm: 'sbrady', v: {hr: 48, sys: 104, dia: 64, st: 3}},
+      {at: 210, say: 'Mobitz I (Wenckebach)', rhythm: 'wenck', v: {hr: 44, sys: 96, dia: 58}},
+      {at: 300, say: 'Complete heart block, junctional escape', rhythm: 'avb3', v: {hr: 40, sys: 84, dia: 50, spo2: 95}},
+      {at: 400, say: 'Hypotensive, right ventricular infarct', v: {hr: 38, sys: 74, dia: 44, cvp: 14}}],
+    'NSTEMI: ST depression → VT': [
+      Object.assign(B('stach', {hr: 104, sys: 148, dia: 92}), {say: 'Chest pressure, ST depression'}),
+      {at: 60, say: 'ST depression deepening', v: {st: -2, hr: 112}},
+      {at: 150, say: 'PVCs', ectopy: 'pvc', v: {st: -3, sys: 136, dia: 86}},
+      {at: 240, say: 'Couplets', ectopy: 'couplet', v: {spo2: 95}},
+      {at: 310, say: 'Runs of VT', ectopy: 'nsvt'},
+      {at: 370, say: 'Sustained VT with a pulse', rhythm: 'vt', vtPulse: true, ectopy: 'none', now: {hr: 168}, ramp: 15, v: {sys: 88, dia: 58}},
+      {at: 450, say: 'VT, pressure falling', v: {sys: 70, dia: 44}}],
+    'Asthma attack → exhaustion → arrest': [
+      Object.assign(B('stach', {hr: 118, spo2: 93, rr: 30, etco2: 30}), {say: 'Wheezing, can speak in phrases'}),
+      {at: 60, say: 'Severe: words only, low CO2', v: {hr: 132, spo2: 90, rr: 36, etco2: 28}},
+      {at: 150, say: 'Tiring: CO2 creeping up (bad sign)', v: {hr: 138, spo2: 86, rr: 30, etco2: 40}},
+      {at: 240, say: 'Silent chest, exhausted', v: {hr: 126, spo2: 78, rr: 14, etco2: 58, sys: 104, dia: 66}},
+      {at: 320, say: 'Hypoxic bradycardia', rhythm: 'sbrady', v: {hr: 44, spo2: 64, rr: 6, etco2: 70, sys: 78, dia: 44}},
+      {at: 380, say: 'PEA arrest (no pulse)', rhythm: 'pea', v: {hr: 36, rr: 0, etco2: 12}},
+      {at: 470, say: 'Asystole', rhythm: 'asys'}],
+    'COPD exacerbation → CO2 narcosis': [
+      Object.assign(B('stach', {hr: 104, spo2: 87, rr: 26, etco2: 52, sys: 138, dia: 84}), {say: 'COPD flare, barrel chest'}),
+      {at: 90, say: 'Too much oxygen given: drowsy', v: {spo2: 95, rr: 16, etco2: 62, hr: 98}},
+      {at: 200, say: 'CO2 narcosis: very sleepy', v: {rr: 10, etco2: 76, hr: 92, sys: 128, dia: 76}},
+      {at: 300, say: 'Respiratory acidosis, AF', rhythm: 'afib', v: {hr: 116, rr: 8, etco2: 84, spo2: 90}},
+      {at: 400, say: 'Needs BiPAP', v: {rr: 6, etco2: 90, spo2: 86}}],
+    'DKA (Kussmaul breathing)': [
+      Object.assign(B('stach', {hr: 118, rr: 30, etco2: 20, sys: 104, dia: 62, temp: 37.2}), {say: 'Vomiting, fruity breath, deep fast breathing'}),
+      {at: 90, say: 'Dehydrated, low CO2', v: {hr: 128, rr: 34, etco2: 16, sys: 94, dia: 56}},
+      {at: 200, say: 'Fluids started', v: {hr: 118, sys: 102, dia: 62}},
+      {at: 320, say: 'Insulin: potassium dropping, PVCs', ectopy: 'pvc', v: {hr: 108, rr: 26, etco2: 22}},
+      {at: 440, say: 'Improving', ectopy: 'none', v: {hr: 98, rr: 20, etco2: 28, sys: 112, dia: 70}}],
+    'Low potassium → PVCs → torsades': [
+      Object.assign(B('nsr', {hr: 82}), {say: 'Vomiting and diuretics, K+ low'}),
+      {at: 60, say: 'PVCs', ectopy: 'pvc'},
+      {at: 150, say: 'Frequent PVCs, U waves', ectopy: 'freq', v: {hr: 88}},
+      {at: 240, say: 'Bigeminy', ectopy: 'bigem'},
+      {at: 320, say: 'R on T', ectopy: 'ront'},
+      {at: 380, say: 'Torsades, no pulse', rhythm: 'vt', vtPulse: false, ectopy: 'none', now: {hr: 228}, v: {rr: 0, etco2: 12, sys: 0, dia: 0}},
+      {at: 420, say: 'VF', rhythm: 'vf', coarse: true}],
+    'Digoxin toxicity': [
+      Object.assign(B('afib', {hr: 72, sys: 116, dia: 72}), {say: 'On digoxin, nauseated, yellow vision'}),
+      {at: 80, say: 'Slow AF, scooped ST', v: {hr: 56, st: -1}},
+      {at: 170, say: 'Bigeminy', ectopy: 'bigem', v: {hr: 54}},
+      {at: 260, say: 'High-grade block', rhythm: 'avb3', ectopy: 'none', v: {hr: 38, sys: 90, dia: 56}},
+      {at: 340, say: 'Ventricular irritability', ectopy: 'couplet', v: {hr: 40}},
+      {at: 420, say: 'VT', rhythm: 'vt', vtPulse: true, ectopy: 'none', now: {hr: 160}, v: {sys: 76, dia: 46}}],
+    'Beta-blocker / calcium-blocker overdose': [
+      Object.assign(B('sbrady', {hr: 52, sys: 102, dia: 62}), {say: 'Took a handful of heart pills'}),
+      {at: 60, say: 'Slower, BP falling', v: {hr: 44, sys: 88, dia: 52}},
+      {at: 150, say: '1st degree block', rhythm: 'avb1', v: {hr: 40, sys: 78, dia: 44}},
+      {at: 240, say: 'Junctional, shock', rhythm: 'junct', v: {hr: 34, sys: 66, dia: 36, spo2: 94}},
+      {at: 330, say: 'Profound bradycardia', v: {hr: 28, sys: 54, dia: 30}},
+      {at: 400, say: 'PEA arrest', rhythm: 'pea', v: {hr: 24, rr: 0, etco2: 10}}],
+    'Tricyclic overdose → wide-complex tachycardia': [
+      Object.assign(B('stach', {hr: 124, sys: 108, dia: 64, temp: 37.6}), {say: 'Antidepressant overdose, dry and flushed'}),
+      {at: 60, say: 'Drowsy, tachycardic', v: {hr: 136, sys: 96, dia: 56, rr: 12}},
+      {at: 150, say: 'Wide QRS, hypotensive', v: {hr: 142, sys: 82, dia: 48}},
+      {at: 240, say: 'Wide-complex tachycardia', rhythm: 'vt', vtPulse: true, now: {hr: 156}, v: {sys: 72, dia: 42}},
+      {at: 330, say: 'Pulseless', vtPulse: false, v: {rr: 0, etco2: 12}},
+      {at: 360, say: 'VF', rhythm: 'vf', coarse: true}],
+    'Cocaine: hypertension → VT': [
+      Object.assign(B('stach', {hr: 132, sys: 186, dia: 112, temp: 38.0, rr: 24}), {say: 'Agitated, chest pain after cocaine'}),
+      {at: 60, say: 'Hypertensive, hot', v: {hr: 144, sys: 204, dia: 122, temp: 38.6}},
+      {at: 150, say: 'Ischemia, PVCs', ectopy: 'freq', v: {st: -2}},
+      {at: 240, say: 'Runs of VT', ectopy: 'nsvt', v: {temp: 39.2}},
+      {at: 320, say: 'VT', rhythm: 'vt', vtPulse: true, ectopy: 'none', now: {hr: 190}, v: {sys: 96, dia: 60}},
+      {at: 380, say: 'VF', rhythm: 'vf', coarse: true, v: {rr: 0, etco2: 12}}],
+    'Thyroid storm': [
+      Object.assign(B('stach', {hr: 138, temp: 39.2, sys: 156, dia: 72, rr: 24}), {say: 'Fever, sweating, agitated'}),
+      {at: 90, say: 'AF with RVR', rhythm: 'afib', v: {hr: 164, temp: 39.8}},
+      {at: 200, say: 'Wide pulse pressure, fever 40', v: {hr: 176, sys: 162, dia: 58, temp: 40.4}},
+      {at: 320, say: 'Heart failing', v: {hr: 168, sys: 104, dia: 52, spo2: 91, rr: 30}}],
+    'Malignant hyperthermia (in surgery)': [
+      Object.assign(B('nsr', {hr: 82, rr: 12, etco2: 38}), {say: 'Under anesthesia'}),
+      {at: 40, say: 'EtCO2 rising (first sign)', v: {etco2: 52, hr: 98}},
+      {at: 110, say: 'Tachycardia, rigidity', rhythm: 'stach', v: {etco2: 68, hr: 124, temp: 38.2}},
+      {at: 200, say: 'Temperature climbing fast', v: {etco2: 82, hr: 142, temp: 39.6, spo2: 93}},
+      {at: 290, say: 'High potassium, PVCs', ectopy: 'freq', v: {temp: 40.8, sys: 98, dia: 54}},
+      {at: 380, say: 'VT', rhythm: 'vt', vtPulse: true, ectopy: 'none', now: {hr: 180}, v: {sys: 72, dia: 40}}],
+    'Aortic dissection → tamponade': [
+      Object.assign(B('stach', {hr: 108, sys: 188, dia: 104}), {say: 'Tearing pain to the back'}),
+      {at: 60, say: 'Hypertensive', v: {sys: 196, dia: 108}},
+      {at: 160, say: 'Dissection extending', v: {hr: 118, sys: 168, dia: 96}},
+      {at: 250, say: 'Bleeding into the pericardium: CVP up', v: {hr: 132, sys: 102, dia: 76, cvp: 16}},
+      {at: 330, say: 'Tamponade: narrow pulse pressure', v: {hr: 144, sys: 78, dia: 64, cvp: 20, spo2: 93}},
+      {at: 400, say: 'PEA arrest', rhythm: 'pea', v: {hr: 120, rr: 0, etco2: 10}}],
+    'Ruptured AAA': [
+      Object.assign(B('stach', {hr: 112, sys: 104, dia: 68}), {say: 'Sudden back and belly pain, pulsatile mass'}),
+      {at: 60, say: 'Hypotensive', v: {hr: 128, sys: 86, dia: 56}},
+      {at: 150, say: 'Bleeding fast', v: {hr: 142, sys: 70, dia: 44, cvp: 2, spo2: 95}},
+      {at: 230, say: 'Profound shock', v: {hr: 150, sys: 54, dia: 32, etco2: 20}},
+      {at: 300, say: 'PEA arrest', rhythm: 'pea', v: {hr: 128, rr: 0, etco2: 9}},
+      {at: 400, say: 'Asystole', rhythm: 'asys'}],
+    'Postpartum hemorrhage': [
+      Object.assign(B('nsr', {hr: 96, sys: 118, dia: 74}), {say: 'Just delivered, bleeding heavily'}),
+      {at: 60, say: 'Compensating: tachycardia first', rhythm: 'stach', v: {hr: 118, sys: 112, dia: 76}},
+      {at: 150, say: 'Pressure drops late (young patient)', v: {hr: 136, sys: 88, dia: 54, cvp: 2}},
+      {at: 240, say: 'Hemorrhagic shock', v: {hr: 148, sys: 68, dia: 40, spo2: 94, etco2: 24}},
+      {at: 320, say: 'Blood and uterotonics: improving', v: {hr: 118, sys: 94, dia: 58, etco2: 32}}],
+    'Pneumonia → hypoxia → septic shock': [
+      Object.assign(B('stach', {hr: 106, spo2: 91, rr: 26, temp: 39.0, sys: 112, dia: 66}), {say: 'Cough, fever, crackles'}),
+      {at: 90, say: 'Hypoxic on room air', v: {spo2: 86, rr: 30, hr: 114}},
+      {at: 200, say: 'Oxygen on, sats up', v: {spo2: 92}},
+      {at: 300, say: 'Septic shock', v: {hr: 128, sys: 84, dia: 42, temp: 39.6, rr: 32}},
+      {at: 400, say: 'AF from the sepsis', rhythm: 'afib', v: {hr: 144, sys: 78, dia: 40}}],
+    'Neurogenic shock (spinal cord injury)': [
+      Object.assign(B('sbrady', {hr: 50, sys: 86, dia: 46, temp: 36.2}), {say: 'Neck injury: warm, pink, hypotensive'}),
+      {at: 80, say: 'Bradycardia with hypotension (no tachycardia)', v: {hr: 44, sys: 78, dia: 40}},
+      {at: 180, say: 'Suctioning: vagal pause', rhythm: 'junct', v: {hr: 36}},
+      {at: 260, say: 'Atropine and pressors', rhythm: 'sbrady', v: {hr: 58, sys: 98, dia: 56}}],
+    'Pacemaker failure to capture': [
+      Object.assign(B('paced', {hr: 70}), {say: 'Paced rhythm'}),
+      {at: 60, say: 'Intermittent failure to capture', rhythm: 'avb3', v: {hr: 40, sys: 98, dia: 60}},
+      {at: 160, say: 'Slow escape only', rhythm: 'idio', v: {hr: 30, sys: 74, dia: 42}},
+      {at: 240, say: 'Ventricular standstill', rhythm: 'asys'},
+      {at: 252, say: 'Escape rhythm returns', rhythm: 'idio', v: {hr: 28}}],
+    'Carbon monoxide poisoning (SpO2 lies)': [
+      Object.assign(B('stach', {hr: 112, spo2: 99, rr: 22}), {say: 'Headache from a faulty heater: SpO2 reads 99% (it cannot tell CO)'}),
+      {at: 90, say: 'Confused, SpO2 still 99-100%', v: {hr: 124, spo2: 100, rr: 26}},
+      {at: 200, say: 'Ischemia despite normal sats', v: {hr: 132, st: -2, sys: 104, dia: 64}},
+      {at: 300, say: 'PVCs', ectopy: 'freq'},
+      {at: 380, say: 'Collapses, SpO2 still reads normal', v: {hr: 140, sys: 82, dia: 50}}],
+    'Drowning → hypoxic arrest': [
+      Object.assign(B('stach', {hr: 128, spo2: 82, rr: 32, temp: 35.4}), {say: 'Pulled from the water, coughing'}),
+      {at: 60, say: 'Severe hypoxia', v: {spo2: 72, rr: 10, hr: 110}},
+      {at: 120, say: 'Hypoxic bradycardia', rhythm: 'sbrady', v: {hr: 40, spo2: 58, rr: 4, temp: 35.0}},
+      {at: 180, say: 'PEA', rhythm: 'pea', v: {hr: 32, rr: 0, etco2: 10}},
+      {at: 260, say: 'Asystole', rhythm: 'asys'}],
+    'Electric shock / commotio cordis → VF': [
+      Object.assign(B('nsr', {hr: 92}), {say: 'Struck in the chest (or electrocuted)'}),
+      {at: 8, say: 'VF on impact', rhythm: 'vf', coarse: true, v: {rr: 0, etco2: 14, sys: 0, dia: 0}},
+      {at: 150, say: 'VF (fine) if not shocked', coarse: false, v: {etco2: 8}}],
+    'Vasovagal faint → recovers': [
+      Object.assign(B('nsr', {hr: 82, sys: 118, dia: 74}), {say: 'Blood draw, feels faint'}),
+      {at: 20, say: 'Sweaty, pale', v: {hr: 64, sys: 98, dia: 60}},
+      {at: 45, say: 'Faints: slow and low', rhythm: 'sbrady', ramp: 5, v: {hr: 38, sys: 70, dia: 40}},
+      {at: 60, say: 'Brief pause', rhythm: 'junct', v: {hr: 30}},
+      {at: 75, say: 'Lying flat, legs up: recovering', rhythm: 'sbrady', v: {hr: 58, sys: 94, dia: 58}},
+      {at: 150, say: 'Back to normal', rhythm: 'nsr', v: {hr: 76, sys: 114, dia: 72}}],
+    'Panic attack (looks scary, is not)': [
+      Object.assign(B('stach', {hr: 128, rr: 32, etco2: 24, spo2: 99, sys: 146, dia: 88}), {say: 'Fast heart, tingling hands, can’t breathe'}),
+      {at: 90, say: 'Hyperventilating: CO2 low, sats 100%', v: {hr: 134, rr: 36, etco2: 20, spo2: 100}},
+      {at: 200, say: 'Slowing breathing, calming', v: {hr: 108, rr: 22, etco2: 30}},
+      {at: 300, say: 'Settled', rhythm: 'nsr', v: {hr: 88, rr: 16, etco2: 36, sys: 126, dia: 78}}],
+    'Stroke: AF and high blood pressure': [
+      Object.assign(B('afib', {hr: 96, sys: 192, dia: 104}), {say: 'Sudden weakness on one side'}),
+      {at: 90, say: 'Hypertensive', v: {sys: 206, dia: 112, hr: 102}},
+      {at: 200, say: 'Swallow impaired, sats dip', v: {spo2: 93, rr: 20}},
+      {at: 320, say: 'BP lowered carefully', v: {sys: 176, dia: 96, hr: 88}}],
+    'Sepsis responding to treatment (gets better)': [
+      Object.assign(B('stach', {hr: 128, sys: 84, dia: 44, temp: 39.4, rr: 28, spo2: 92, etco2: 28}), {say: 'Septic: fever, low pressure'}),
+      {at: 90, say: 'Fluids running', v: {hr: 122, sys: 90, dia: 48}},
+      {at: 200, say: 'Antibiotics in, norepinephrine started', v: {hr: 112, sys: 102, dia: 58, temp: 38.8}},
+      {at: 320, say: 'Improving', v: {hr: 102, sys: 112, dia: 64, temp: 38.0, rr: 22, spo2: 95}},
+      {at: 440, say: 'Stable', rhythm: 'nsr', v: {hr: 92, sys: 118, dia: 70, temp: 37.6, rr: 18, etco2: 34}}]
+  };
+  for (const k in add) if (!COURSES[k]) COURSES[k] = add[k];
+  try { buildInstructor(); setInstrMode(); courseShow(); } catch (e) {}
+})();
+</script>
 <script>/* WEBSITE ONLY (added by deploy.js; the House Monitor page itself is untouched).
    The deterioration you clicked, as a progress bar under its status line in the Instructor panel, like a video's:
    one section per rhythm with a divider between them and the rhythm's name underneath, and a round knob riding the
