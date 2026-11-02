@@ -4652,6 +4652,57 @@ checkUpdate=function(){ updState(window.NativeAudio?"This app runs entirely offl
     try { return origBeep(b); } finally { R.scene = sc; }
   };
 })();
+
+/* Android app: the monitor's sound reaches the app's own player (window.NativeAudio) from the browser's AUDIO thread.
+   The page did this with a ScriptProcessor, which runs on the same thread that draws the screen: whenever drawing the
+   waveforms kept that thread busy, blocks of sound were dropped or repeated before they ever reached the app, and the
+   long Philips tones made that audible as constant crackling. An AudioWorklet copies every sample on the audio thread
+   itself, in order, so nothing is lost; the drawing thread only forwards finished blocks (late is fine, the app
+   buffers them). The page's own audio chain is kept as it is: only the last hop changes. */
+(function () {
+  if (!window.NativeAudio || !window.AudioWorkletNode || typeof AC === 'undefined' || AC) return;
+  const WORKLET = `class Tap extends AudioWorkletProcessor {
+    constructor() { super(); this.buf = new Int16Array(2048); this.n = 0; }
+    process(inputs) {
+      const ch = inputs[0] && inputs[0][0];
+      for (let i = 0; i < 128; i++) {
+        const v = ch ? Math.max(-1, Math.min(1, ch[i])) : 0;
+        this.buf[this.n++] = Math.round(v * 32767);
+        if (this.n === this.buf.length) { this.port.postMessage(this.buf, [this.buf.buffer]); this.buf = new Int16Array(2048); this.n = 0; }
+      }
+      return true;
+    }
+  }
+  registerProcessor('native-tap', Tap);`;
+  const origEnsure = ensureAudio;
+  ensureAudio = function () {
+    if (AC) return origEnsure();
+    // build the page's chain with the ScriptProcessor refused (so it connects straight to the speaker), and note which
+    // node feeds the speaker: that is the end of the chain the tap goes on
+    const P = (window.AudioContext || window.webkitAudioContext).prototype, BP = window.BaseAudioContext && BaseAudioContext.prototype;
+    const NP = AudioNode.prototype, origSP = (BP && BP.createScriptProcessor) || P.createScriptProcessor, origConnect = NP.connect;
+    let last = null;
+    const refuse = function () { throw new Error('no ScriptProcessor'); };
+    if (BP) BP.createScriptProcessor = refuse; P.createScriptProcessor = refuse;
+    NP.connect = function (dst) { if (dst instanceof AudioDestinationNode) last = this; return origConnect.apply(this, arguments); };
+    try { origEnsure(); }
+    finally { NP.connect = origConnect; if (BP) BP.createScriptProcessor = origSP; P.createScriptProcessor = origSP; }
+    if (!AC || !last || !AC.audioWorklet) return;
+    const ctx = AC, out = last;
+    const url = URL.createObjectURL(new Blob([WORKLET], {type: 'application/javascript'}));
+    ctx.audioWorklet.addModule(url).then(() => {
+      const tap = new AudioWorkletNode(ctx, 'native-tap', {numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit'});
+      tap.port.onmessage = e => {
+        const b = new Uint8Array(e.data.buffer); let s = '';
+        for (let i = 0; i < b.length; i += 4096) s += String.fromCharCode.apply(null, b.subarray(i, i + 4096));
+        try { NativeAudio.write(btoa(s)); } catch (x) {}
+      };
+      NativeAudio.start(ctx.sampleRate);
+      // the speaker gets silence (the tap writes nothing to its output) and the app plays the sound
+      out.disconnect(); out.connect(tap); tap.connect(ctx.destination); ctx.nativeOut = tap;
+    }).catch(() => {});   // no worklet: the sound simply stays on the WebView's own output
+  };
+})();
 </script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(function(){});</script>
 </body>
