@@ -4210,16 +4210,21 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
 .philips #ptInfo,.philips #alarmArea,.philips #sysInfo,.philips #hHdr,.philips #hMsg{display:none!important}
 .philips #top{background:#000;border-bottom:1px solid #3a3f46}
 #phHdr{display:none}
-.philips #phHdr{display:flex;position:absolute;left:0;top:0;right:0;bottom:0;align-items:stretch;gap:4px;padding:3px 6px;color:#dfe3e8;font-size:15px}
-#phHdr .pi{display:flex;flex-direction:column;justify-content:center;line-height:1.15;white-space:nowrap;overflow:hidden;cursor:pointer}
-#phHdr .pi b{font-size:17px;color:#fff}
-#phHdr .af{flex:1;display:flex;align-items:center;padding:0 10px;font-size:19px;white-space:nowrap;overflow:hidden;border-radius:2px;cursor:pointer;min-width:0}
-#phHdr .af.r{background:#e01818;color:#fff}#phHdr .af.y{background:#ffe100;color:#000}#phHdr .af.c{background:#5ad7f5;color:#000}
-#phHdr .af .ar{margin-left:auto;padding-left:10px;font-size:15px}
+/* measured from a video of a real IntelliVue: a grey status bar, then one row of three alarm fields under it -
+   INOPs on the left, yellow alarms in the middle, red alarms on the right; bold capitals, black text on yellow/cyan */
+.philips #phHdr{display:flex;flex-direction:column;position:absolute;left:0;top:0;right:0;bottom:0;font-family:Arial,Helvetica,sans-serif;font-weight:700}
+#phHdr .gb{flex:0 0 44%;display:flex;align-items:center;gap:26px;padding:0 10px;background:#aeb2b3;color:#fff;font-size:15px;white-space:nowrap;overflow:hidden}
+#phHdr .gb .bd{cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#phHdr .gb .sp{flex:1}
+#phHdr .row{flex:1;position:relative}
+#phHdr .af{position:absolute;top:2px;bottom:2px;display:flex;align-items:center;padding:0 12px;font-size:21px;letter-spacing:.5px;white-space:pre;overflow:hidden;cursor:pointer}
+#phHdr .af.in{left:0;width:33%}#phHdr .af.yl{left:44%;width:29%}#phHdr .af.rd{left:73%;right:0}
+#phHdr .af .v{margin-left:auto;padding-left:14px}
+#phHdr .af.r{background:#ec3a1e;color:#fff}#phHdr .af.y{background:#f3f04a;color:#111}#phHdr .af.c{background:#78e2ee;color:#0e5560}
+#phHdr .af.w{background:#f1f1f1;color:#e0301e}
 #phHdr .af .ck{margin-right:6px}
-#phHdr .af.pz{color:#ff4b4b;font-weight:700}
-#phHdr .clk{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;line-height:1.15;white-space:nowrap;font-size:14px}
-#phHdr .clk b{font-size:17px;font-weight:400;color:#fff}
+.mx100 #phHdr .gb{font-size:13px;gap:16px}.mx100 #phHdr .af{font-size:17px;padding:0 8px}
+.mx100 #phHdr .af.in{width:36%}.mx100 #phHdr .af.yl{left:36%;width:32%}.mx100 #phHdr .af.rd{left:68%}
 .philips .pw{border:none;border-bottom:1px solid #2b3036;background:#000}
 .philips .phn .lbl{font-size:16px;font-weight:400;left:8px;top:4px}
 .philips .phn .lbl small{font-size:12px;margin-left:5px;opacity:.85}
@@ -4264,7 +4269,7 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
 
   function phGeom() {
     const m1 = S.display === 'mx100';
-    G.left = m1 ? 190 : 0; G.head = m1 ? 64 : 44; G.status = m1 ? 0 : 22; G.keys = m1 ? 0 : 58; G.numRow = m1 ? 0 : 108;
+    G.left = m1 ? 190 : 0; G.head = m1 ? 64 : 78; G.status = m1 ? 0 : 22; G.keys = m1 ? 0 : 58; G.numRow = m1 ? 0 : 108;
     G.numW = Math.round((SW - G.left) * (m1 ? 0.36 : 0.29));
     WAVE_TOP = G.head; WAVE_W = SW - G.left - G.numW; WAVE_H = 800 - G.head - G.numRow - G.status - G.keys;
   }
@@ -4397,35 +4402,40 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   };
 
   /* ---------- alarm messages in IntelliVue wording ---------- */
-  const INOP = {leads: 'ECG Leads Off', vlead: 'V Lead Off', arrsusp: 'Cannot Analyze ECG', spo2off: 'SpO2 Sensor Off', spo2nop: 'SpO2 No Pulse',
-    spo2art: 'SpO2 Noisy Signal', artnz: 'ABP Zero+Check Cal', cvpnz: 'CVP Zero+Check Cal', nibperr: 'NBP Measure Failed', co2occl: 'CO2 Occlusion',
-    batlow: 'Battery Low'};
-  const ARR = {asys: 'Asystole', vfib: 'Vent Fib/Tach', vtach: 'VTach', xtachy: 'Extreme Tachy', xbrady: 'Extreme Brady', apnea: 'Apnea',
-    vt2: 'Run PVCs High', accv: 'Vent Rhythm', vbrady: 'Vent Brady', pause: 'Pause', ront: 'R-on-T PVCs', couplet: 'Pair PVCs',
-    bigem: 'Vent Bigeminy', trigem: 'Vent Trigeminy', pvc: 'PVCs/min High', afib: 'AFIB', irreg: 'Irregular HR'};
+  // INOPs: the source label keeps its case, the message is in capitals ("ECG LEADS OFF", "Resp LEADS OFF")
+  const INOP = {leads: ['ECG', 'LEADS OFF'], vlead: ['ECG', 'V LEAD OFF'], arrsusp: ['ECG', 'CANNOT ANALYZE'], spo2off: ['SpO2', 'SENSOR OFF'],
+    spo2nop: ['SpO2', 'NO PULSE'], spo2art: ['SpO2', 'NOISY SIGNAL'], artnz: ['ABP', 'ZERO+CHECK CAL'], cvpnz: ['CVP', 'ZERO+CHECK CAL'],
+    nibperr: ['NBP', 'MEASURE FAILED'], co2occl: ['CO2', 'OCCLUSION'], batlow: ['', 'BATTERY LOW']};
+  const ARR = {asys: 'ASYSTOLE', vfib: 'VENT FIB/TACH', vtach: 'VTACH', xtachy: 'EXTREME TACHY', xbrady: 'EXTREME BRADY', apnea: 'APNEA',
+    vt2: 'RUN PVCs HIGH', accv: 'VENT RHYTHM', vbrady: 'VENT BRADY', pause: 'PAUSE', ront: 'R-ON-T PVCs', couplet: 'PAIR PVCs',
+    bigem: 'VENT BIGEMINY', trigem: 'VENT TRIGEMINY', pvc: 'PVCs/min HIGH', afib: 'AFIB', irreg: 'IRREGULAR HR', spo2desat: 'DESAT'};
   const LIMNAME = {'ART Sys': 'ABPs', 'ART Dia': 'ABPd', 'ART Mean': 'ABPm', 'NIBP Sys': 'NBPs', 'NIBP Dia': 'NBPd', 'NIBP Mean': 'NBPm',
-    CVP: 'CVPm', EtCO2: 'etCO2', FiCO2: 'imCO2', T1: 'Temp', SpO2: 'SpO2', HR: 'HR'};
+    CVP: 'CVPm', EtCO2: 'etCO2', FiCO2: 'imCO2', T1: 'Temp', SpO2: 'SpO2', HR: 'HR', RR: 'RR'};
   const isInop = a => !!INOP[a.id];
-  function phText(a) {
-    const star = a.pri === 'high' ? '*** ' : a.pri === 'medium' ? '** ' : '* ';
+  // [message, value]: "*** APNEA" + "10 sec", "**RR" + "7<18", "!!!ECG LEADS OFF", cyan "ECG" + "LEADS OFF" spaced apart
+  function phParts(a) {
     if (isInop(a)) {
-      let t = INOP[a.id]; if (a.id === 'batlow' && /Critic/.test(a.msg)) t = 'Battery Empty';
-      return (a.pri === 'high' ? '!!! ' : a.pri === 'medium' ? '!! ' : '') + t;
+      let [src, m] = INOP[a.id]; if (a.id === 'batlow' && /Critic/.test(a.msg)) m = 'BATTERY EMPTY';
+      const ex = a.pri === 'high' ? '!!!' : a.pri === 'medium' ? '!!' : '';
+      return ex ? [ex + (src ? src + ' ' : '') + m, ''] : [src ? src + '   ' + m : m, ''];
     }
-    if (a.id === 'spo2desat') return '*** Desat';
-    if (a.id === 'tachy' || a.id === 'brady') { const m = a.msg.match(/(\d+)\s*([<>])\s*(\d+)/); return star + (a.id === 'tachy' ? 'HR High' : 'HR Low') + (m ? ' ' + m[1] + m[2] + m[3] : ''); }
-    if (ARR[a.id]) return star + ARR[a.id];
-    // limit alarms: "SpO2 Low 87 < 90" -> "** SpO2 87<90"
+    const red = a.pri === 'high', star = red ? '*** ' : a.pri === 'medium' ? '**' : '*';
+    if (a.id === 'apnea') return ['*** APNEA', Math.round((S.apnea.time || 20) + Math.max(0, simT - a.since)) + ' sec'];
+    if (ARR[a.id]) return [star + ARR[a.id], ''];
+    if (a.id === 'tachy' || a.id === 'brady') { const m = a.msg.match(/(\d+)\s*([<>])\s*(\d+)/); return [star + 'HR', m ? m[1] + m[2] + m[3] : '']; }
+    // limit alarms: "SpO2 Low 87 < 90" -> "**SpO2" + "87<90"
     const m = a.msg.match(/^(.*?) (High|Low) (-?[\d.]+) ([<>]) (-?[\d.]+)$/);
-    if (m) return star + (LIMNAME[m[1]] || m[1]) + ' ' + m[3] + m[4] + m[5];
-    return star + a.msg;
+    if (m) return [star + (LIMNAME[m[1]] || m[1]), m[3] + m[4] + m[5]];
+    return [star + a.msg.toUpperCase(), ''];
   }
+  const phText = a => phParts(a).filter(Boolean).join('  ');
   window.philipsAlarmText = phText;
   const fieldCls = a => a.pri === 'high' ? 'r' : a.pri === 'medium' ? 'y' : isInop(a) ? 'c' : 'y';
-  function field(list, now) {
-    if (!list.length) return '<div class="af"></div>';
-    const i = Math.floor(now / 2000) % list.length, a = list[i];
-    return `<div class="af ${fieldCls(a)}">${a.acked ? '<span class="ck">&#10003;</span>' : ''}${esc(phText(a))}${list.length > 1 ? '<span class="ar">&#8680;</span>' : ''}</div>`;
+  // one field: several alarms take turns every 2 s, with an arrow in front; a tick once acknowledged
+  function field(slot, list, now) {
+    if (!list.length) return '';
+    const a = list[Math.floor(now / 2000) % list.length], [t, v] = phParts(a);
+    return `<div class="af ${slot} ${fieldCls(a)}">${list.length > 1 ? '&#8593; ' : ''}${a.acked ? '<span class="ck">&#10003;</span>' : ''}${esc(t)}${v ? '<span class="v">' + esc(v) + '</span>' : ''}</div>`;
   }
   const origTop = updateTop;
   updateTop = function () {
@@ -4435,14 +4445,15 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     const pat = list.filter(a => !isInop(a)), inop = list.filter(isInop);
     const d = new Date(), tm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
     const paused = simT < pauseUntil && powered, r = Math.max(0, pauseUntil - simT), pz = Math.floor(r / 60) + ':' + pad2(Math.floor(r % 60));
-    const left = S.display === 'mx100'
-      ? `<div class="pi" style="width:170px"><b>${esc(S.bed)}</b><span>${esc(S.cat)}</span></div>`
-      : `<div class="pi" style="width:270px"><b>${esc(S.bed)} &nbsp;<span style="font-weight:400;font-size:14px">${esc(S.name || '')}</span></b><span>&#128100; ${esc(S.cat)} &nbsp; Paced: No</span></div>`;
-    const af = paused && !pat.length ? `<div class="af pz">${simT < pauseUntil && S.pauseTime >= 600 ? 'Alarms Off' : 'Al. Paused ' + pz}</div>` : field(pat, now);
-    const html = left + af + field(inop, now) +
-      `<div class="clk" style="width:${S.display === 'mx100' ? 120 : 190}px"><b>${tm}</b><span>${S.display === 'mx100' ? '&#128267; ' + Math.round(battery) + '%' : d.toLocaleDateString(undefined, {day: '2-digit', month: 'short', year: '2-digit'}) + ' &nbsp;Profile: ' + esc(S.cat)}</span></div>`;
+    const m1 = S.display === 'mx100', MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const gb = `<div class="gb"><span class="bd">${esc(S.bed)}${S.name && !m1 ? ' &nbsp;' + esc(S.name) : ''}</span><span class="sp"></span>` +
+      (m1 ? `<span>${tm}</span><span>&#128267; ${Math.round(battery)}%</span>`
+          : `<span>${esc(S.cat)}</span><span>${d.getDate()} ${MON[d.getMonth()]} ${tm}</span><span>&#9636; Profiles</span><span>${rows.length} Waves</span>`) + '</div>';
+    const red = pat.filter(a => a.pri === 'high'), yel = pat.filter(a => a.pri !== 'high');
+    const off = paused ? `<div class="af rd w">&#128277; ${S.pauseTime >= 600 ? 'ALARMS OFF' : 'ALARMS PAUSED'}<span class="v">${S.pauseTime >= 600 ? '' : pz}</span></div>` : '';
+    const html = gb + '<div class="row">' + field('in', inop, now) + field('yl', yel, now) + (red.length ? field('rd', red, now) : off) + '</div>';
     if (phHdr.innerHTML !== html) phHdr.innerHTML = html;
-    const pis = phHdr.querySelector('.pi'); if (pis) pis.onclick = () => openPatientMenu();
+    const pis = phHdr.querySelector('.bd'); if (pis) pis.onclick = () => openPatientMenu();
     phHdr.querySelectorAll('.af').forEach(e => e.onclick = () => openAlarmsSetup(3));
     // status line: prompts and notices
     const sm = infoMsg && infoMsg.until > simT ? infoMsg.msg : paused ? 'Alarms paused ' + pz : '';
@@ -4528,20 +4539,37 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
   }
 
   /* ---------- alarm sounds ----------
-     Philips does not publish the frequencies of its tones; the patterns are from the Instructions for Use and the pitches
-     are chosen to match their descriptions (red = high pitch, yellow = lower pitch).
-     Traditional: red = a high-pitched sound once a second; yellow = a lower-pitched sound every 2 s; INOP tone every 2 s.
-     ISO/IEC: red = 5 high tones (3 + 2) then a 10 s pause; yellow = 3 lower tones then 20 s; INOP = 2 lower tones. */
+     Measured from two videos of real IntelliVue monitors (pitch from the spectrum, timing from the loudness envelope;
+     the two recordings agree to within 1 %):
+     Traditional (the usual US setting): yellow = a 480 Hz buzzer tone, ~0.62 s at full level and then a ~0.35 s softer
+       tail, every 2.04 s; red = the same tone at 960 Hz every 1.02 s, so the two run back to back. Overtones measured:
+       480 Hz tone 2nd -12 dB, 3rd -2 dB, 5th -15 dB; 960 Hz tone 3rd -11 dB.
+     ISO/IEC: red = 3 + 2 pulses (0, .215, .43, .85, 1.065 s) twice 2.06 s apart, repeating every 9.24 s, a 480 Hz-based
+       chord (960 + 1440 Hz strongest); yellow = 3 x 720 Hz pulses 0.3 s apart every 11.3 s; INOP = 2 low pulses
+       (242 Hz-based) 0.43 s apart. Traditional cyan INOPs were not in either video: they use the yellow tone.
+     Pulse tone: a ~90 ms square-ish beep, 552 Hz at SpO2 98 %, falling with the saturation. */
+  const PHW = {phY: [[1, 1], [2, .25], [3, .8], [5, .18]], phR: [[1, 1], [2, .02], [3, .28]],
+    phIH: [[1, .18], [2, .8], [3, 1], [4, .1], [5, .45]], phIM: [[1, 1], [2, .2]], phIL: [[1, .4], [2, 1], [3, .4], [4, .1], [5, .1]],
+    phQ: [[1, 1], [3, .2], [5, .2]]};
+  function phWaves() {
+    if (!AC || WAVES.phY) return;
+    for (const k in PHW) { const r = new Float32Array(8), im = new Float32Array(8); PHW[k].forEach(([n, v]) => im[n] = v); WAVES[k] = AC.createPeriodicWave(r, im); }
+  }
+  // full level for 0.62 s, then the softer tail stepping down ~3 dB at a time (measured envelope)
+  ENV.phTrad = envCurve([[0, 0], [.015, 1], [.63, 1], [.67, .7], [.76, .5], [.87, .35], [.97, .25], [1, 0]]);
+  const origPlay = playPattern;
+  playPattern = function (pat, t0) { phWaves(); return origPlay(pat, t0); };
   TONESETS.phTrad = {
-    high:   {notes: [[0, 960, .3, false, .55]], repeat: 1.0},
-    medium: {notes: [[0, 480, .35, false, .6]], repeat: 2.0},
-    low:    {notes: [[0, 480, .18, false, .6]], repeat: 2.0},
+    high:   {notes: [[0, 960, .97, 'phR', .5, 0, 'phTrad']], repeat: 1.02},
+    medium: {notes: [[0, 480, .97, 'phY', .5, 0, 'phTrad']], repeat: 2.04},
+    low:    {notes: [[0, 480, .97, 'phY', .45, 0, 'phTrad']], repeat: 2.04},
   };
-  const pulses = (f, ts, d) => ts.map(t => [t, f, d, true, .5]);
+  const pulses = (f, w, ts, d, lv) => ts.map(t => [t, f, d, w, lv]);
+  const RED5 = [0, .215, .43, .85, 1.065];
   TONESETS.phIec = {
-    high:   {notes: pulses(880, [0, .22, .44, .9, 1.12], .16), repeat: 11.3},
-    medium: {notes: pulses(660, [0, .25, .5], .2), repeat: 20.7},
-    low:    {notes: pulses(520, [0, .3], .2), repeat: 20.5},
+    high:   {notes: pulses(480, 'phIH', RED5.concat(RED5.map(t => t + 2.06)), .16, .5), repeat: 9.24},
+    medium: {notes: pulses(720, 'phIM', [0, .3, .6], .24, .45), repeat: 11.3},
+    low:    {notes: pulses(242, 'phIL', [0, .43], .25, .5), repeat: 15.4},
   };
   // GE CARESCAPE tones from the CARESCAPE manual (alarm tone tables): "Legacy" medium = two 100 ms beeps of 397 + 441 Hz
   // then 2.4 s quiet; low = one 500 ms 397 Hz beep every 5.5 s (the high, 3 x 500 + 510 Hz, was measured from a real B450
@@ -4561,7 +4589,7 @@ checkUpdate=function(){ updState(window.NativeAudio?"The app updates itself from
     if (S.toneSet === 'classic' || !AC || !S.volQrs || standby || !powered) return origQrs(b);
     const s = clamp(M.spo2 != null ? M.spo2 : 100, 30, 100);
     if (S.display === 'carescape') return tone(920 - (100 - s) * 10, AC.currentTime + 0.005, 0.04, qrsGain, false);
-    if (isPh()) return tone(840 * Math.pow(2, (s - 100) / 30), AC.currentTime + 0.005, 0.07, qrsGain, false);
+    if (isPh()) { phWaves(); return tone(552 * Math.pow(2, (s - 98) / 80), AC.currentTime + 0.005, 0.09, qrsGain, 'phQ', .5); }
     return origQrs(b);
   };
 
